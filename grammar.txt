@@ -1,0 +1,114 @@
+# Translation units
+unit -> imports functions <eof>
+
+# Imports
+imports -> import imports
+imports -> <e>
+import -> "import" import_items ;
+import_items -> { <string> import_items_tail }
+import_items -> <string>
+import_items_tail -> , <string> import_items_tail
+import_items_tail -> <e>
+
+# Functions
+function -> "function" <ident> ( parameters ) { statements }
+parameters -> parameter parameters_tail
+parameters -> <e>
+parameters_tail -> , parameter parameters_tail
+parameters_tail -> <e>
+parameter -> <ident> : type
+functions -> function functions
+functions -> <e>
+
+# Types
+type -> <ident>
+
+# Statements
+statement -> declaration ;
+statement -> assignment ;
+statement -> return ;
+statement -> expr ;
+statement -> ;
+statement -> if
+statement -> while
+statement -> for
+statements -> statement statements
+statements -> <e>
+
+# Declarations
+declaration -> "const" <ident> decl_assign ;
+declaration -> "var" <ident> decl_assign ;
+decl_assign -> = expr
+decl_assign -> <e>
+
+# Assignments (apart from declarations)
+assignment -> <ident> assign_op expr
+
+# If statements
+if -> "if" expr { statements } else
+else -> "else" else'
+else -> <e>
+else' -> if
+else' -> { statements }
+
+# While loops
+while -> "while" expr { statements }
+
+# For loops
+for -> "for" <ident> "in" expr { statements }
+
+# Returns
+return -> "return" return'
+return' -> expr
+return' -> <e>
+
+# Expressions
+expr -> unary_op expr expr_tail
+expr -> ( expr ) expr_tail
+expr -> <ident> expr_tail
+expr -> literal expr_tail
+expr_tail -> binary_op expr
+expr_tail -> <e>
+
+# Literals
+literal -> <integer>
+literal -> <float>
+literal -> <string>
+
+# Unary operators
+unary_op -> +
+unary_op -> -
+unary_op -> !
+unary_op -> ~
+
+# Binary operators
+binary_op -> +
+binary_op -> -
+binary_op -> /
+binary_op -> *
+binary_op -> <<
+binary_op -> >>
+binary_op -> ^
+binary_op -> %
+binary_op -> &
+binary_op -> |
+binary_op -> &&
+binary_op -> ||
+binary_op -> >
+binary_op -> <
+binary_op -> <=
+binary_op -> >=
+binary_op -> ==
+binary_op -> !=
+
+# Assignment operators
+assign_op -> +=
+assign_op -> -=
+assign_op -> *=
+assign_op -> /=
+assign_op -> %=
+assign_op -> ^=
+assign_op -> &=
+assign_op -> |=
+assign_op -> >>=
+assign_op -> <<=

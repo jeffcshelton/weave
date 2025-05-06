@@ -1,104 +1,33 @@
-use crate::Result;
-use std::{cmp::Ordering, io::Read};
+//! All components related to scanning a source file into Weave tokens.
 
+use crate::{source::{Source, SourceIterator}, Result};
+use std::collections::VecDeque;
+
+/// An error that can occur while scanning tokens.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ScanError {
+  /// A character declaration is empty. (`''`)
   CharacterEmpty,
+
+  /// A token is found to be empty.
+  ///
+  /// This is an internal error that should not be possible.
   EmptyToken,
+
+  /// An escape sequence is invalid.
   EscapeInvalid(char),
+
+  /// A string or character literal is not closed.
   LiteralNotClosed,
+
+  /// An invalid character appears in a number literal.
   NumberCharacter(char),
+
+  /// A token is invalid.
   TokenInvalid,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct SourcePosition {
-  /// The number of bytes.
-  pub byte_offset: usize,
-
-  /// The index, in terms of UTF-8 characters, of the position.
-  pub char_offset: usize,
-
-  /// The line number, starting at 1.
-  pub line: usize,
-
-  pub column: usize,
-}
-
-impl Default for SourcePosition {
-  fn default() -> Self {
-    Self {
-      byte_offset: 0,
-      char_offset: 0,
-      column: 0,
-      line: 1,
-    }
-  }
-}
-
-impl PartialOrd for SourcePosition {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl Ord for SourcePosition {
-  fn cmp(&self, other: &Self) -> Ordering {
-    self.byte_offset.cmp(&other.byte_offset)
-  }
-}
-
-/// An iterator that wraps a `Chars` iterator and counts the line number,
-/// column number, character offset, and byte offset.
-#[derive(Clone, Debug)]
-struct SourceIterator<'a> {
-  offset: usize,
-  source: &'a [char],
-}
-
-impl<'a> SourceIterator<'a> {
-  pub fn new(source: &'a [char]) -> Self {
-    Self {
-      offset: 0,
-      source,
-    }
-  }
-}
-
-impl SourceIterator<'_> {
-  pub fn back(&mut self) {
-    self.offset -= 1;
-  }
-
-  pub fn peek(&self, lookahead: usize) -> Option<char> {
-    self.source
-      .get(self.offset + lookahead)
-      .copied()
-  }
-
-  pub fn position(&self) -> SourcePosition {
-    SourcePosition::default()
-  }
-
-  pub fn wrap<T>(&self, error: ScanError) -> Result<T> {
-    Err((error, self.position()).into())
-  }
-}
-
-impl Iterator for SourceIterator<'_> {
-  type Item = char;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    let c = self.source.get(self.offset).copied();
-
-    if c.is_some() {
-      self.offset += 1;
-    }
-
-    c
-  }
-}
-
+/// A single scanner token.
 #[deny(unused)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Token {
@@ -207,6 +136,7 @@ pub enum Token {
   /// `extern`
   Extern,
 
+  /// A floating point number.
   Float {
     /// Whether the number is negative.
     negative: bool,
@@ -218,6 +148,9 @@ pub enum Token {
     fractional: u64,
   },
 
+  /// `for`
+  For,
+
   /// `function`
   Function,
 
@@ -227,12 +160,16 @@ pub enum Token {
   /// `import`
   Import,
 
+  /// `in`
+  In,
+
+  /// An integer number.
   Integer {
     /// Whether the number is negative.
     negative: bool,
 
     /// The integer value of the number.
-    value: u64,
+    absolute: u64,
   },
 
   /// An arbitrary identifier name.
@@ -264,6 +201,9 @@ pub enum Token {
   /// `+=`
   PlusEquals,
 
+  /// `return`
+  Return,
+
   /// `;`
   Semicolon,
 
@@ -281,6 +221,9 @@ pub enum Token {
 
   /// `var`
   Var,
+
+  /// `while`
+  While,
 }
 
 macro_rules! consume {
@@ -288,7 +231,12 @@ macro_rules! consume {
     $base::$default
   };
 
-  (priv $base:ident, $stream:expr, $default:ident; { $($c:literal => $d2:ident $({ $($tail:tt)* })?,)* }) => {
+  (priv
+   $base:ident,
+   $stream:expr,
+   $default:ident;
+   { $($c:literal => $d2:ident $({ $($tail:tt)* })?,)* }
+  ) => {
     match $stream.peek(0) {
       $(Some($c) => {
         $stream.next();
@@ -298,23 +246,37 @@ macro_rules! consume {
     }
   };
 
-  ($base:ident, $stream:expr, { $($c:literal => $default:ident $({ $($tail:tt)* })?,)* }) => {
+  (
+    $base:ident,
+    $stream:expr,
+    { $($c:literal => $default:ident $({ $($tail:tt)* })?,)* }
+  ) => {
     match $stream.peek(0) {
       $(Some($c) => {
         $stream.next();
         consume!(priv $base, $stream, $default; $({ $($tail)* })?)
       },)*
-      _ => return Err((ScanError::TokenInvalid, $stream.position()).into()),
+      _ => return $stream.locate(ScanError::TokenInvalid),
     }
   };
 }
 
+/// A peekable stream that produces tokens.
 #[derive(Clone, Debug)]
 pub struct TokenStream<'s> {
   stream: SourceIterator<'s>,
+  peeked: VecDeque<Result<Token>>,
 }
 
 impl<'s> TokenStream<'s> {
+  /// Constructs a new `TokenStream` from a reference to a source file.
+  pub fn new(source: &'s Source) -> Self {
+    Self {
+      stream: SourceIterator::new(source),
+      peeked: VecDeque::new(),
+    }
+  }
+
   /// Advances the internal iterator past any whitespace at the front.
   /// Additionally updates the program point, accounting for newlines.
   fn skip_whitespace(&mut self) {
@@ -335,7 +297,7 @@ impl<'s> TokenStream<'s> {
 
     /// Determines whether the peeked character indicates that the word is done.
     fn is_stop(c: char) -> bool {
-      c.is_whitespace() || "{}[]:,.();".contains(c)
+      c.is_whitespace() || "<>&*{}[]^:,-.=!()%|+;/".contains(c)
     }
 
     // Push characters to the word string until the stream is empty or reaches a
@@ -355,23 +317,29 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if word.len() == 0 {
-      return Err((ScanError::EmptyToken, self.stream.position()).into());
+      return self.stream.locate(ScanError::EmptyToken);
     }
 
-    match word.as_str() {
+    let token = match word.as_str() {
       // Check for keyword matches.
-      "class" => Ok(Token::Class),
-      "const" => Ok(Token::Const),
-      "extern" => Ok(Token::Extern),
-      "else" => Ok(Token::Else),
-      "function" => Ok(Token::Function),
-      "if" => Ok(Token::If),
-      "import" => Ok(Token::Import),
-      "var" => Ok(Token::Var),
+      "class" => Token::Class,
+      "const" => Token::Const,
+      "extern" => Token::Extern,
+      "else" => Token::Else,
+      "for" => Token::For,
+      "function" => Token::Function,
+      "if" => Token::If,
+      "import" => Token::Import,
+      "in" => Token::In,
+      "return" => Token::Return,
+      "var" => Token::Var,
+      "while" => Token::While,
 
       // If the word matches no keywords, it must be an identifier.
-      _ => Ok(Token::Identifier(word.into_boxed_str())),
-    }
+      _ => Token::Identifier(word.into_boxed_str()),
+    };
+
+    Ok(token)
   }
 
   /// Scans an integer or floating point number token.
@@ -391,7 +359,7 @@ impl<'s> TokenStream<'s> {
     /// Determines whether the peeked character indicates that the number is
     /// done.
     fn is_stop(c: char) -> bool {
-      c.is_whitespace() || "{}[]:,();".contains(c)
+      c.is_whitespace() || "<>&*{}[]^:,-=!()%|+;/".contains(c)
     }
 
     // Loop variables required to decode the number.
@@ -427,7 +395,7 @@ impl<'s> TokenStream<'s> {
           _ => {},
         }
       } else {
-        return Err((ScanError::NumberCharacter(c), self.stream.position()).into());
+        return self.stream.locate(ScanError::NumberCharacter(c));
       }
 
       // Advance to the next character.
@@ -436,7 +404,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if i == 0 {
-      return Err((ScanError::EmptyToken, self.stream.position()).into());
+      return self.stream.locate(ScanError::EmptyToken);
     }
 
     // Pass back either an integer for float depending on whether a dot was
@@ -444,7 +412,7 @@ impl<'s> TokenStream<'s> {
     if past_dot {
       Ok(Token::Float { negative, whole, fractional })
     } else {
-      Ok(Token::Integer { negative, value: whole })
+      Ok(Token::Integer { negative, absolute: whole })
     }
   }
 
@@ -544,7 +512,7 @@ impl<'s> TokenStream<'s> {
     if closed {
       Ok(Token::String(content.into_boxed_str()))
     } else {
-      self.stream.wrap(ScanError::LiteralNotClosed)
+      self.stream.locate(ScanError::LiteralNotClosed)
     }
   }
 
@@ -553,22 +521,22 @@ impl<'s> TokenStream<'s> {
     self.stream.next();
 
     let Some(c) = self.stream.next() else {
-      return self.stream.wrap(ScanError::LiteralNotClosed);
+      return self.stream.locate(ScanError::LiteralNotClosed);
     };
 
     let c = match c {
       '\\' => self.scan_escape()?,
       '\n' | '\r' => {
-        return self.stream.wrap(ScanError::LiteralNotClosed);
+        return self.stream.locate(ScanError::LiteralNotClosed);
       },
       '\'' => {
-        return self.stream.wrap(ScanError::CharacterEmpty);
+        return self.stream.locate(ScanError::CharacterEmpty);
       },
       c => c,
     };
 
     if self.stream.next() != Some('\'') {
-      return self.stream.wrap(ScanError::LiteralNotClosed);
+      return self.stream.locate(ScanError::LiteralNotClosed);
     }
 
     Ok(Token::Character(c))
@@ -576,7 +544,7 @@ impl<'s> TokenStream<'s> {
 
   fn scan_escape(&mut self) -> Result<char> {
     let Some(escape) = self.stream.next() else {
-      return Err((ScanError::LiteralNotClosed, self.stream.position()).into());
+      return self.stream.locate(ScanError::LiteralNotClosed);
     };
 
     let c = match escape {
@@ -615,14 +583,14 @@ impl<'s> TokenStream<'s> {
 
       // Invalid escape sequence
       escape => {
-        return Err((ScanError::EscapeInvalid(escape), self.stream.position()).into());
+        return self.stream.locate(ScanError::EscapeInvalid(escape));
       },
     };
 
     Ok(c)
   }
 
-  pub fn next(&mut self) -> Result<Token> {
+  fn scan_next(&mut self) -> Result<Token> {
     self.skip_whitespace();
 
     // The first character can be used to determine what broad class the token
@@ -651,6 +619,7 @@ impl<'s> TokenStream<'s> {
         if is_number {
           self.scan_number()
         } else {
+          self.stream.next();
           Ok(Token::Dash)
         }
       },
@@ -658,6 +627,27 @@ impl<'s> TokenStream<'s> {
       '\'' => self.scan_character(),
       _ => self.scan_symbol(),
     }
+  }
+
+  /// Scan the next token and advance the iterator.
+  pub fn next(&mut self) -> Result<Token> {
+    // Immediately return the first peeked item if it exists.
+    if let Some(peeked) = self.peeked.pop_front() {
+      return peeked;
+    }
+
+    self.scan_next()
+  }
+
+  /// Peek the next token without advancing the iterator.
+  pub fn peek(&mut self, index: usize) -> Result<Token> {
+    for _ in self.peeked.len()..=index {
+      let token = self.scan_next();
+      self.peeked.push_back(token);
+    }
+
+    // TODO: Change to reference.
+    self.peeked[index].clone()
   }
 }
 
@@ -672,46 +662,34 @@ impl<'s> Iterator for TokenStream<'s> {
   }
 }
 
+/// A token scanner that operates on source files.
 #[derive(Clone, Debug)]
 pub struct Scanner {
   /// Contents of the source file read to create the scanner.
-  contents: Box<[char]>,
+  source: Source,
 }
 
 impl Scanner {
-  /// Instantiates a new `Scanner` by reading a source file.
-  pub fn new(mut reader: impl Read) -> Result<Self> {
-    // Read the source file into a string.
-    let mut contents = String::new();
-    reader.read_to_string(&mut contents)?;
+  /// Constructs a new `Scanner` by reading from a file path.
+  pub fn from_path(path: &str) -> Result<Self> {
+    let mut scanner = Scanner::empty();
+    scanner.load(path)?;
+    Ok(scanner)
+  }
 
-    // Decode the string as individual UTF-8 characters because this is what
-    // the `SourceIterator` operates on. [Design 1.1]
-    let contents = contents
-      .chars()
-      .collect::<Vec<char>>()
-      .into_boxed_slice();
-
-    Ok(Self { contents })
+  /// Constructs an empty scanner that only yields EOF.
+  pub fn empty() -> Self {
+    Self { source: Source::empty() }
   }
 
   /// Loads a new source file into the scanner.
-  pub fn load(&mut self, mut reader: impl Read) -> Result<()> {
-    let mut contents = String::new();
-    reader.read_to_string(&mut contents)?;
-
-    self.contents = contents
-      .chars()
-      .collect::<Vec<char>>()
-      .into_boxed_slice();
-
+  pub fn load(&mut self, path: &str) -> Result<()> {
+    self.source = Source::read_path(path)?;
     Ok(())
   }
 
   /// Returns a `TokenStream` that lazily yields tokens.
   pub fn stream(&mut self) -> TokenStream {
-    TokenStream {
-      stream: SourceIterator::new(&self.contents),
-    }
+    TokenStream::new(&self.source)
   }
 }

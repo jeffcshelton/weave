@@ -1,11 +1,22 @@
-use crate::{parser::ParseError, scanner::{SourcePosition, ScanError}};
-use std::{fmt::{self, Display, Formatter}, io};
+//! Weave error definitions and conversions.
 
-#[derive(Debug)]
+use crate::{parser::ParseError, scanner::ScanError, source::Point};
+use std::{fmt::{self, Display, Formatter}, io, sync::Arc};
+
+/// Any error that can be produced by Weave.
+#[derive(Clone, Debug)]
 pub enum Error {
-  IO(io::Error),
+  /// Error originating from an I/O operation.
+  /// Wraps a `std::io::Error`.
+  IO(Arc<io::Error>),
+
+  /// Error originating from the parser.
+  /// Wraps a `ParseError`.
   Parse(ParseError),
-  Scan(ScanError, SourcePosition),
+
+  /// Error originating from the scanner.
+  /// Wraps a `ScanError`.
+  Scan(ScanError, Point),
 }
 
 impl Display for Error {
@@ -24,7 +35,7 @@ impl std::error::Error for Error {}
 
 impl From<io::Error> for Error {
   fn from(error: io::Error) -> Self {
-    Error::IO(error)
+    Error::IO(Arc::new(error))
   }
 }
 
@@ -34,10 +45,11 @@ impl From<ParseError> for Error {
   }
 }
 
-impl From<(ScanError, SourcePosition)> for Error {
-  fn from((error, point): (ScanError, SourcePosition)) -> Self {
+impl From<(ScanError, Point)> for Error {
+  fn from((error, point): (ScanError, Point)) -> Self {
     Error::Scan(error, point)
   }
 }
 
+/// A result wrapping any error that can occur in Weave.
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,22 +1,17 @@
-mod error;
-mod parser;
-mod scanner;
-
-use std::fs::File;
-
-pub use error::{Error, Result};
-
-use clap::{Parser, Subcommand};
-use scanner::Scanner;
+use clap::{Parser as CommandParser, Subcommand};
+use weave::{Parser, Result, Scanner, parser::Unit};
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {
+  Parse {
+    paths: Vec<String>,
+  },
   Scan {
-    path: String,
+    paths: Vec<String>,
   },
 }
 
-#[derive(Clone, Debug, Parser)]
+#[derive(Clone, CommandParser, Debug)]
 struct Args {
   #[command(subcommand)]
   command: Command,
@@ -26,13 +21,33 @@ fn main() -> Result<()> {
   let args = Args::parse();
 
   match args.command {
-    Command::Scan { path } => {
-      let file = File::open(path)?;
-      let mut scanner = Scanner::new(file)?;
-      let mut stream = scanner.stream();
+    Command::Parse { paths } => {
+      let mut scanner = Scanner::empty();
 
-      while let Some(token) = stream.next() {
-        println!("{:?}", token?);
+      for path in &paths {
+        scanner.load(path)?;
+
+        let mut parser = Parser::new(scanner.stream());
+        let unit = parser.parse::<Unit>()?;
+
+        println!("--- \x1b[1m{path}\x1b[0m ---");
+        println!("{unit:#?}");
+        println!();
+      }
+    },
+    Command::Scan { paths } => {
+      let mut scanner = Scanner::empty();
+
+      for path in &paths {
+        scanner.load(path)?;
+
+        println!("--- \x1b[1m{path}\x1b[0m ---");
+
+        for token in scanner.stream() {
+          println!("{:?}", token?);
+        }
+
+        println!();
       }
     },
   }
