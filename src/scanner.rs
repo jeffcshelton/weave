@@ -1,31 +1,7 @@
 //! All components related to scanning a source file into Weave tokens.
 
-use crate::{source::{Source, SourceIterator}, Result};
-use std::collections::VecDeque;
-
-/// An error that can occur while scanning tokens.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum ScanError {
-  /// A character declaration is empty. (`''`)
-  CharacterEmpty,
-
-  /// A token is found to be empty.
-  ///
-  /// This is an internal error that should not be possible.
-  EmptyToken,
-
-  /// An escape sequence is invalid.
-  EscapeInvalid(char),
-
-  /// A string or character literal is not closed.
-  LiteralNotClosed,
-
-  /// An invalid character appears in a number literal.
-  NumberCharacter(char),
-
-  /// A token is invalid.
-  TokenInvalid,
-}
+use crate::{source::{Point, Source, SourceIterator}, Result};
+use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range};
 
 /// A single scanner token.
 #[deny(unused)]
@@ -91,6 +67,9 @@ pub enum Token {
   /// `-`
   Dash,
 
+  /// `->`
+  DashAngleRight,
+
   /// `-=`
   DashEquals,
 
@@ -108,6 +87,9 @@ pub enum Token {
 
   /// `>>=`
   DoubleAngleRightEquals,
+
+  /// `::`
+  DoubleColon,
 
   /// `==`
   DoubleEquals,
@@ -226,6 +208,86 @@ pub enum Token {
   While,
 }
 
+impl Display for Token {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    match self {
+      Self::Ampersand => write!(f, "&"),
+      Self::AmpersandEquals => write!(f, "&="),
+      Self::AngleLeft => write!(f, "<"),
+      Self::AngleLeftEquals => write!(f, "<="),
+      Self::AngleRight => write!(f, ">"),
+      Self::AngleRightEquals => write!(f, ">="),
+      Self::Asterisk => write!(f, "*"),
+      Self::AsteriskEquals => write!(f, "*="),
+      Self::BraceLeft => write!(f, "{{"),
+      Self::BraceRight => write!(f, "}}"),
+      Self::BracketLeft => write!(f, "["),
+      Self::BracketRight => write!(f, "]"),
+      Self::Caret => write!(f, "^"),
+      Self::CaretEquals => write!(f, "^="),
+      Self::Character(c) => write!(f, "'{c}'"),
+      Self::Class => write!(f, "class"),
+      Self::Colon => write!(f, ":"),
+      Self::Const => write!(f, "const"),
+      Self::Comma => write!(f, ","),
+      Self::Dash => write!(f, "-"),
+      Self::DashAngleRight => write!(f, "->"),
+      Self::DashEquals => write!(f, "-="),
+      Self::DoubleAmpersand => write!(f, "&&"),
+      Self::DoubleAngleLeft => write!(f, "<<"),
+      Self::DoubleAngleLeftEquals => write!(f, "<<="),
+      Self::DoubleAngleRight => write!(f, ">>"),
+      Self::DoubleAngleRightEquals => write!(f, ">>="),
+      Self::DoubleColon => write!(f, "::"),
+      Self::DoubleEquals => write!(f, "=="),
+      Self::DoublePipe => write!(f, "||"),
+      Self::Dot => write!(f, "."),
+      Self::EOF => write!(f, "<eof>"),
+      Self::Else => write!(f, "else"),
+      Self::Equals => write!(f, "="),
+      Self::Exclamation => write!(f, "!"),
+      Self::ExclamationEquals => write!(f, "!="),
+      Self::Extern => write!(f, "extern"),
+      Self::Float { negative, whole, fractional } => {
+        if *negative {
+          write!(f, "-{whole}.{fractional}")
+        } else {
+          write!(f, "{whole}.{fractional}")
+        }
+      },
+      Self::For => write!(f, "for"),
+      Self::Function => write!(f, "function"),
+      Self::If => write!(f, "if"),
+      Self::Import => write!(f, "import"),
+      Self::In => write!(f, "in"),
+      Self::Integer { negative, absolute } => {
+        if *negative {
+          write!(f, "-{absolute}")
+        } else {
+          write!(f, "{absolute}")
+        }
+      },
+      Self::Identifier(identifier) => write!(f, "{identifier}"),
+      Self::ParenthesisLeft => write!(f, "("),
+      Self::ParenthesisRight => write!(f, ")"),
+      Self::Percent => write!(f, "%"),
+      Self::PercentEquals => write!(f, "%="),
+      Self::Pipe => write!(f, "|"),
+      Self::PipeEquals => write!(f, "|="),
+      Self::Plus => write!(f, "+"),
+      Self::PlusEquals => write!(f, "+="),
+      Self::Return => write!(f, "return"),
+      Self::Semicolon => write!(f, ";"),
+      Self::Slash => write!(f, "/"),
+      Self::SlashEquals => write!(f, "/="),
+      Self::String(string) => write!(f, "\"{string}\""),
+      Self::Tilde => write!(f, "~"),
+      Self::Var => write!(f, "var"),
+      Self::While => write!(f, "while"),
+    }
+  }
+}
+
 macro_rules! consume {
   (priv $base:ident, $stream:expr, $default:ident;) => {
     $base::$default
@@ -265,15 +327,21 @@ macro_rules! consume {
 #[derive(Clone, Debug)]
 pub struct TokenStream<'s> {
   stream: SourceIterator<'s>,
-  peeked: VecDeque<Result<Token>>,
+  peeked: VecDeque<(Token, Range<Point>)>,
+
+  last_range: Range<Point>,
 }
 
 impl<'s> TokenStream<'s> {
   /// Constructs a new `TokenStream` from a reference to a source file.
   pub fn new(source: &'s Source) -> Self {
+    let stream = SourceIterator::new(source);
+    let start = stream.point();
+
     Self {
-      stream: SourceIterator::new(source),
+      stream,
       peeked: VecDeque::new(),
+      last_range: start.clone()..start,
     }
   }
 
@@ -317,7 +385,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if word.len() == 0 {
-      return self.stream.locate(ScanError::EmptyToken);
+      return self.stream.locate(ScanError::TokenEmpty);
     }
 
     let token = match word.as_str() {
@@ -404,7 +472,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if i == 0 {
-      return self.stream.locate(ScanError::EmptyToken);
+      return self.stream.locate(ScanError::TokenEmpty);
     }
 
     // Pass back either an integer for float depending on whether a dot was
@@ -443,9 +511,12 @@ impl<'s> TokenStream<'s> {
       '^' => Caret {
         '=' => CaretEquals,
       },
-      ':' => Colon,
+      ':' => Colon {
+        ':' => DoubleColon,
+      },
       ',' => Comma,
       '-' => Dash {
+        '>' => DashAngleRight,
         '=' => DashEquals,
       },
       '.' => Dot,
@@ -590,8 +661,11 @@ impl<'s> TokenStream<'s> {
     Ok(c)
   }
 
-  fn scan_next(&mut self) -> Result<Token> {
+  fn scan_next(&mut self) -> Result<(Token, Range<Point>)> {
     self.skip_whitespace();
+
+    // The starting point of the token.
+    let start = self.stream.point();
 
     // The first character can be used to determine what broad class the token
     // falls into:
@@ -603,10 +677,10 @@ impl<'s> TokenStream<'s> {
     // Notably, this does not account for floating point numbers that start with
     // a '.', which this scanner does not support.
     let Some(first) = self.stream.peek(0) else {
-      return Ok(Token::EOF);
+      return Ok((Token::EOF, start.clone()..start));
     };
 
-    match first {
+    let token = match first {
       'a'..='z' | 'A'..='Z' | '_' => self.scan_word(),
       '0'..='9' => self.scan_number(),
       '-' => {
@@ -619,35 +693,47 @@ impl<'s> TokenStream<'s> {
         if is_number {
           self.scan_number()
         } else {
-          self.stream.next();
-          Ok(Token::Dash)
+          self.scan_symbol()
         }
       },
       '"' => self.scan_string(),
       '\'' => self.scan_character(),
       _ => self.scan_symbol(),
-    }
+    }?;
+
+    let mut end = self.stream.point();
+    end.back();
+
+    Ok((token, start..end))
   }
 
   /// Scan the next token and advance the iterator.
   pub fn next(&mut self) -> Result<Token> {
     // Immediately return the first peeked item if it exists.
-    if let Some(peeked) = self.peeked.pop_front() {
-      return peeked;
-    }
+    // Otherwise, scan the next item.
+    let (token, range) = match self.peeked.pop_front() {
+      Some(peeked) => peeked,
+      None => self.scan_next()?,
+    };
 
-    self.scan_next()
+    self.last_range = range;
+    Ok(token)
   }
 
   /// Peek the next token without advancing the iterator.
   pub fn peek(&mut self, index: usize) -> Result<Token> {
     for _ in self.peeked.len()..=index {
-      let token = self.scan_next();
+      let token = self.scan_next()?;
       self.peeked.push_back(token);
     }
 
     // TODO: Change to reference.
-    self.peeked[index].clone()
+    Ok(self.peeked[index].0.clone())
+  }
+
+  /// Gets the source point range of the last scanned element.
+  pub fn last_range(&self) -> Range<Point> {
+    self.last_range.clone()
   }
 }
 
@@ -693,3 +779,54 @@ impl Scanner {
     TokenStream::new(&self.source)
   }
 }
+
+/// An error that can occur while scanning tokens.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum ScanError {
+  /// A character declaration is empty. (`''`)
+  CharacterEmpty,
+
+  /// An escape sequence is invalid.
+  EscapeInvalid(char),
+
+  /// A string or character literal is not closed.
+  LiteralNotClosed,
+
+  /// An invalid character appears in a number literal.
+  NumberCharacter(char),
+
+  /// A token is found to be empty.
+  ///
+  /// This is an internal error that should not be possible.
+  TokenEmpty,
+
+  /// A token is invalid.
+  TokenInvalid,
+}
+
+impl Display for ScanError {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    match self {
+      Self::CharacterEmpty => {
+        write!(f, "character empty")
+      },
+      Self::EscapeInvalid(escape) => {
+        write!(f, "invalid escape sequence: \\{escape}")
+      },
+      Self::LiteralNotClosed => {
+        write!(f, "literal not closed")
+      },
+      Self::NumberCharacter(c) => {
+        write!(f, "number character invalid: {c}")
+      },
+      Self::TokenEmpty => {
+        write!(f, "empty token")
+      },
+      Self::TokenInvalid => {
+        write!(f, "invalid token")
+      },
+    }
+  }
+}
+
+impl std::error::Error for ScanError {}

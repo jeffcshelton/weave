@@ -1,7 +1,7 @@
 //! Weave error definitions and conversions.
 
 use crate::{parser::ParseError, scanner::ScanError, source::Point};
-use std::{fmt::{self, Display, Formatter}, io, sync::Arc};
+use std::{fmt::{self, Display, Formatter}, io, ops::Range, sync::Arc};
 
 /// Any error that can be produced by Weave.
 #[derive(Clone, Debug)]
@@ -10,11 +10,11 @@ pub enum Error {
   /// Wraps a `std::io::Error`.
   IO(Arc<io::Error>),
 
-  /// Error originating from the parser.
+  /// Error originating from the parser, with a location in a source file.
   /// Wraps a `ParseError`.
-  Parse(ParseError),
+  Parse(ParseError, Range<Point>),
 
-  /// Error originating from the scanner.
+  /// Error originating from the scanner, with a location in a source file.
   /// Wraps a `ScanError`.
   Scan(ScanError, Point),
 }
@@ -23,9 +23,11 @@ impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
       Error::IO(error) => write!(f, "io: {error}"),
-      Error::Parse(error) => write!(f, "parse: {error:?}"),
+      Error::Parse(error, range) => {
+        write!(f, "parse @ ({} - {}): {error}", range.start, range.end)
+      },
       Error::Scan(error, point) => {
-        write!(f, "scan @ line {}, col {}: {error:?}", point.line, point.column)
+        write!(f, "scan @ {point}: {error}")
       },
     }
   }
@@ -39,9 +41,9 @@ impl From<io::Error> for Error {
   }
 }
 
-impl From<ParseError> for Error {
-  fn from(error: ParseError) -> Self {
-    Error::Parse(error)
+impl From<(ParseError, Range<Point>)> for Error {
+  fn from((error, range): (ParseError, Range<Point>)) -> Self {
+    Error::Parse(error, range)
   }
 }
 

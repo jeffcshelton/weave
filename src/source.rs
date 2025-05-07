@@ -1,7 +1,7 @@
 //! Components related to reading and storing source files.
 
 use crate::{Result, scanner::ScanError};
-use std::{cmp::Ordering, fs::File, io::Read, sync::Arc};
+use std::{cmp::Ordering, fmt::{self, Display, Formatter}, fs::File, io::Read, sync::Arc};
 
 /// Represents a UTF-8 source code file that has been read.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -168,15 +168,21 @@ impl Point {
   }
 }
 
-impl PartialOrd for Point {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
+impl Display for Point {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    write!(f, "line {}, col {}", self.line, self.column)
   }
 }
 
 impl Ord for Point {
   fn cmp(&self, other: &Self) -> Ordering {
     self.byte_offset.cmp(&other.byte_offset)
+  }
+}
+
+impl PartialOrd for Point {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
   }
 }
 

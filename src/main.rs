@@ -1,3 +1,5 @@
+use std::process;
+
 use clap::{Parser as CommandParser, Subcommand};
 use weave::{Parser, Result, Scanner, parser::Unit};
 
@@ -17,7 +19,15 @@ struct Args {
   command: Command,
 }
 
-fn main() -> Result<()> {
+// Reserve main for error handling.
+fn main() {
+  if let Err(error) = delegate() {
+    eprintln!("\x1b[31;1merror\x1b[0m: {error}");
+    process::exit(1);
+  }
+}
+
+fn delegate() -> Result<()> {
   let args = Args::parse();
 
   match args.command {

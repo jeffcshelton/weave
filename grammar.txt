@@ -11,17 +11,24 @@ import_items_tail -> , <string> import_items_tail
 import_items_tail -> <e>
 
 # Functions
-function -> "function" <ident> ( parameters ) { statements }
+function -> "function" <ident> ( parameters ) return_type { statements }
 parameters -> parameter parameters_tail
 parameters -> <e>
 parameters_tail -> , parameter parameters_tail
 parameters_tail -> <e>
 parameter -> <ident> : type
+return_type -> -> type
+return_type -> <e>
 functions -> function functions
 functions -> <e>
 
 # Types
-type -> <ident>
+type -> scoped
+
+# Scoped identifiers
+scoped -> <ident> scoped_tail
+scoped_tail -> :: <ident> scoped_tail
+scoped_tail -> <e>
 
 # Statements
 statement -> declaration ;
@@ -65,7 +72,7 @@ return' -> <e>
 # Expressions
 expr -> unary_op expr expr_tail
 expr -> ( expr ) expr_tail
-expr -> <ident> expr_tail
+expr -> scoped expr_tail
 expr -> literal expr_tail
 expr_tail -> binary_op expr
 expr_tail -> <e>

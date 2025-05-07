@@ -1,17 +1,7 @@
 //! Components related to parsing a Weave abstract syntax tree (AST).
 
 use crate::{Result, scanner::{Token, TokenStream}};
-
-/// An error that can occur while parsing the AST.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum ParseError {
-  /// A token that appears is unexpected (does not fit the grammar).
-  TokenUnexpected(Token),
-}
-
-fn unexpected<T>(token: Token) -> Result<T> {
-  Err(ParseError::TokenUnexpected(token).into())
-}
+use std::fmt::{self, Display, Formatter};
 
 /// A parser that produces an abstract syntax tree (AST).
 #[derive(Clone, Debug)]
@@ -25,21 +15,23 @@ impl<'s> Parser<'s> {
     Self { stream }
   }
 
+  /// Expect a specific token to be next. Throw an error if not.
   fn expect(&mut self, token: Token) -> Result<()> {
     let candidate = self.stream.next()?;
 
     if candidate == token {
       Ok(())
     } else {
-      Err(ParseError::TokenUnexpected(candidate).into())
+      self.unexpected(candidate)
     }
   }
 
-  fn identifier(&mut self) -> Result<Box<str>> {
-    match self.stream.next()? {
-      Token::Identifier(identifier) => Ok(identifier),
-      token => Err(ParseError::TokenUnexpected(token).into()),
-    }
+  fn unexpected<T>(&self, token: Token) -> Result<T> {
+    self.locate(ParseError::TokenUnexpected(token))
+  }
+
+  fn locate<T>(&self, error: ParseError) -> Result<T> {
+    Err((error, self.stream.last_range()).into())
   }
 
   /// Parse a single parsable structure.
@@ -52,6 +44,60 @@ impl<'s> Parser<'s> {
 pub trait Parse where Self: Sized {
   /// Parse an instance of the type using a pre-constructed parser.
   fn parse(parser: &mut Parser) -> Result<Self>;
+}
+
+/// An identifier naming a variable or function.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Identifier(Box<str>);
+
+impl Parse for Identifier {
+  fn parse(parser: &mut Parser) -> Result<Self> {
+    match parser.stream.next()? {
+      Token::Identifier(name) => Ok(Self(name)),
+      token => parser.unexpected(token),
+    }
+  }
+}
+
+/// A scoped identifier, such as `foo::bar`.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Scoped {
+  /// The outer scoped identifier.
+  /// The `foo` in `foo::bar`.
+  pub outer: Identifier,
+
+  /// The inner scoped identifier.
+  /// The `bar` in `foo::bar`.
+  pub inner: Option<Box<Scoped>>,
+}
+
+impl Parse for Scoped {
+  fn parse(parser: &mut Parser) -> Result<Self> {
+    let outer = parser.parse::<Identifier>()?;
+
+    let inner = match parser.stream.peek(0)? {
+      Token::DoubleColon => {
+        _ = parser.stream.next();
+        Some(Box::new(parser.parse::<Scoped>()?))
+      },
+      _ => None,
+    };
+
+    Ok(Scoped {
+      outer,
+      inner,
+    })
+  }
+}
+
+/// A datatype identifier.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Type(Scoped);
+
+impl Parse for Type {
+  fn parse(parser: &mut Parser) -> Result<Self> {
+    Ok(Self(parser.parse::<Scoped>()?))
+  }
 }
 
 /// An operator that requires left and right arguments.
@@ -134,7 +180,7 @@ impl Parse for BinaryOperator {
       Token::Pipe => Self::BitwiseOr,
       Token::Plus => Self::Plus,
       Token::Slash => Self::Divide,
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     Ok(operator)
@@ -164,7 +210,7 @@ impl Parse for UnaryOperator {
       Token::Exclamation => Self::LogicalNot,
       Token::Plus => Self::Positive,
       Token::Tilde => Self::BitwiseNot,
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     Ok(operator)
@@ -217,7 +263,7 @@ impl Parse for Literal {
       Token::String(value) => {
         Literal::String(value)
       },
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     Ok(literal)
@@ -239,8 +285,8 @@ pub enum Expression {
     right: Box<Expression>,
   },
 
-  /// A single identifier.
-  Identifier(Box<str>),
+  /// A single scoped identifier.
+  Identifier(Scoped),
 
   /// A single literal.
   Literal(Literal),
@@ -259,9 +305,8 @@ impl Parse for Expression {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let mut expression = match parser.stream.peek(0)? {
       // Identifiers.
-      Token::Identifier(identifier) => {
-        _ = parser.stream.next();
-        Expression::Identifier(identifier)
+      Token::Identifier(_) => {
+        Expression::Identifier(parser.parse::<Scoped>()?)
       },
 
       // Left parenthesis.
@@ -275,14 +320,15 @@ impl Parse for Expression {
         // Check that the expression is capped by a right parenthesis.
         let end = parser.stream.next()?;
         if end != Token::ParenthesisRight {
-          Err(ParseError::TokenUnexpected(end))?;
+          return parser.unexpected(end);
         }
 
         inner
       },
 
       // Literals.
-      Token::Float { .. }
+      Token::Character(_)
+      | Token::Float { .. }
       | Token::Integer { .. }
       | Token::String(_) => {
         let literal = parser.parse::<Literal>()?;
@@ -304,7 +350,7 @@ impl Parse for Expression {
       },
 
       // Unexpected token.
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     // TODO: Improve efficiency. Use a hash set.
@@ -348,18 +394,18 @@ impl Parse for Expression {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Parameter {
   /// The variable identifier of the parameter.
-  pub identifier: Box<str>,
+  pub identifier: Identifier,
 
   /// The type identifier associated with the variable.
-  pub typ: Box<str>,
+  pub typ: Type,
 }
 
 impl Parse for Parameter {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let identifier = parser.identifier()?;
+    let identifier = parser.parse::<Identifier>()?;
     parser.expect(Token::Colon)?;
 
-    let typ = parser.identifier()?;
+    let typ = parser.parse::<Type>()?;
 
     Ok(Parameter {
       identifier,
@@ -448,7 +494,7 @@ impl Parse for AssignmentOperator {
       Token::PipeEquals => Self::OrEquals,
       Token::PlusEquals => Self::PlusEquals,
       Token::SlashEquals => Self::DivideEquals,
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     Ok(operator)
@@ -459,7 +505,7 @@ impl Parse for AssignmentOperator {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Assignment {
   /// The lvalue identifier to which the rvalue will be assigned.
-  pub lvalue: Box<str>,
+  pub lvalue: Identifier,
 
   /// The operator defining the particular update operation.
   pub operator: AssignmentOperator,
@@ -470,7 +516,7 @@ pub struct Assignment {
 
 impl Parse for Assignment {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let lvalue = parser.identifier()?;
+    let lvalue = parser.parse::<Identifier>()?;
     let operator = parser.parse::<AssignmentOperator>()?;
     let rvalue = parser.parse::<Expression>()?;
 
@@ -489,7 +535,7 @@ pub struct Declaration {
   pub mutable: bool,
 
   /// The identifier of the variable being declared.
-  pub variable: Box<str>,
+  pub variable: Identifier,
 
   /// The expression to be initially assigned to the variable.
   pub expression: Option<Expression>,
@@ -500,13 +546,10 @@ impl Parse for Declaration {
     let mutable = match parser.stream.next()? {
       Token::Const => false,
       Token::Var => true,
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
-    let variable = match parser.stream.next()? {
-      Token::Identifier(identifier) => identifier,
-      token => Err(ParseError::TokenUnexpected(token))?,
-    };
+    let variable = parser.parse::<Identifier>()?;
 
     let expression = match parser.stream.peek(0)? {
       Token::Equals => {
@@ -576,7 +619,7 @@ impl Parse for If {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct For {
   /// The variable defined as the loop iteration element.
-  pub variable: Box<str>,
+  pub variable: Identifier,
 
   /// The range expression that yields the element at every loop iteration.
   pub range: Expression,
@@ -589,10 +632,7 @@ impl Parse for For {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::For)?;
 
-    let variable = match parser.stream.next()? {
-      Token::Identifier(name) => name,
-      token => Err(ParseError::TokenUnexpected(token))?,
-    };
+    let variable = parser.parse::<Identifier>()?;
 
     parser.expect(Token::In)?;
 
@@ -663,7 +703,7 @@ pub enum Statement {
   If(If),
 
   /// A return statement.
-  Return(Expression),
+  Return(Option<Expression>),
 
   /// A while loop.
   While(While),
@@ -725,29 +765,37 @@ impl Parse for Statement {
         Statement::Empty
       },
 
+      // A for loop
       Token::For => {
         Statement::For(parser.parse::<For>()?)
       },
 
+      // An if statement
       Token::If => {
         Statement::If(parser.parse::<If>()?)
       },
 
+      // A return statement
       Token::Return => {
         // Advance past the "return" keyword.
         _ = parser.stream.next();
 
-        let ret = parser.parse::<Expression>()?;
+        let ret = match parser.stream.peek(0)? {
+          Token::Semicolon => None,
+          _ => Some(parser.parse::<Expression>()?),
+        };
+
         parser.expect(Token::Semicolon)?;
 
         Statement::Return(ret)
       },
 
+      // A while loop
       Token::While => {
         Statement::While(parser.parse::<While>()?)
       },
 
-      token => Err(ParseError::TokenUnexpected(token))?,
+      token => return parser.unexpected(token),
     };
 
     Ok(statement)
@@ -787,10 +835,13 @@ impl Parse for Vec<Statement> {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Function {
   /// The identifier by which the function may be called.
-  pub identifier: Box<str>,
+  pub identifier: Identifier,
 
   /// The parameter list of the function.
   pub parameters: Vec<Parameter>,
+
+  /// The optional return type identifier.
+  pub return_type: Option<Type>,
 
   /// The statements executed when the function is called.
   pub statements: Vec<Statement>,
@@ -800,16 +851,22 @@ impl Parse for Function {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::Function)?;
 
-    let identifier = match parser.stream.next()? {
-      Token::Identifier(identifier) => identifier,
-      token => Err(ParseError::TokenUnexpected(token))?,
-    };
+    let identifier = parser.parse::<Identifier>()?;
 
     parser.expect(Token::ParenthesisLeft)?;
 
     let parameters = parser.parse::<Vec<Parameter>>()?;
 
     parser.expect(Token::ParenthesisRight)?;
+
+    let return_type = match parser.stream.peek(0)? {
+      Token::DashAngleRight => {
+        _ = parser.stream.next();
+        Some(parser.parse::<Type>()?)
+      },
+      _ => None,
+    };
+
     parser.expect(Token::BraceLeft)?;
 
     let statements = parser.parse::<Vec<Statement>>()?;
@@ -819,6 +876,7 @@ impl Parse for Function {
     Ok(Function {
       identifier,
       parameters,
+      return_type,
       statements,
     })
   }
@@ -856,20 +914,20 @@ impl Parse for Import {
         loop {
           match parser.stream.next()? {
             Token::String(file) => files.push(file),
-            token => return unexpected(token),
+            token => return parser.unexpected(token),
           }
 
           match parser.stream.next()? {
             Token::BraceRight => break,
             Token::Comma => {},
-            token => return unexpected(token),
+            token => return parser.unexpected(token),
           }
         }
       },
 
       // import "foo.w";
       Token::String(string) => files.push(string),
-      token => return unexpected(token),
+      token => return parser.unexpected(token),
     }
 
     parser.expect(Token::Semicolon)?;
@@ -914,3 +972,20 @@ impl Parse for Unit {
     })
   }
 }
+
+/// An error that can occur while parsing the AST.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum ParseError {
+  /// A token that appears is unexpected (does not fit the grammar).
+  TokenUnexpected(Token),
+}
+
+impl Display for ParseError {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    match self {
+      Self::TokenUnexpected(token) => write!(f, "unexpected token: {token}"),
+    }
+  }
+}
+
+impl std::error::Error for ParseError {}
