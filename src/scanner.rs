@@ -1,10 +1,10 @@
 //! All components related to scanning a source file into Weave tokens.
 
 use crate::{source::{Point, Source, SourceIterator}, Result};
+use num::{BigInt, BigRational, One};
 use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range};
 
 /// A single scanner token.
-#[deny(unused)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Token {
   /// `&`
@@ -118,17 +118,11 @@ pub enum Token {
   /// `extern`
   Extern,
 
-  /// A floating point number.
-  Float {
-    /// Whether the number is negative.
-    negative: bool,
+  /// `false`
+  False,
 
-    /// The whole (integer) part of the number.
-    whole: u64,
-
-    /// The fractional part of the number (after the decimal).
-    fractional: u64,
-  },
+  /// A floating-point literal number of arbitrary size and precision.
+  Float(BigRational),
 
   /// `for`
   For,
@@ -145,14 +139,8 @@ pub enum Token {
   /// `in`
   In,
 
-  /// An integer number.
-  Integer {
-    /// Whether the number is negative.
-    negative: bool,
-
-    /// The integer value of the number.
-    absolute: u64,
-  },
+  /// An integer literal number of arbitrary size.
+  Integer(BigInt),
 
   /// An arbitrary identifier name.
   ///
@@ -201,6 +189,9 @@ pub enum Token {
   /// `~`
   Tilde,
 
+  /// `true`
+  True,
+
   /// `var`
   Var,
 
@@ -248,25 +239,14 @@ impl Display for Token {
       Self::Exclamation => write!(f, "!"),
       Self::ExclamationEquals => write!(f, "!="),
       Self::Extern => write!(f, "extern"),
-      Self::Float { negative, whole, fractional } => {
-        if *negative {
-          write!(f, "-{whole}.{fractional}")
-        } else {
-          write!(f, "{whole}.{fractional}")
-        }
-      },
+      Self::False => write!(f, "false"),
+      Self::Float(float) => write!(f, "{float}"),
       Self::For => write!(f, "for"),
       Self::Function => write!(f, "function"),
       Self::If => write!(f, "if"),
       Self::Import => write!(f, "import"),
       Self::In => write!(f, "in"),
-      Self::Integer { negative, absolute } => {
-        if *negative {
-          write!(f, "-{absolute}")
-        } else {
-          write!(f, "{absolute}")
-        }
-      },
+      Self::Integer(integer) => write!(f, "{integer}"),
       Self::Identifier(identifier) => write!(f, "{identifier}"),
       Self::ParenthesisLeft => write!(f, "("),
       Self::ParenthesisRight => write!(f, ")"),
@@ -282,6 +262,7 @@ impl Display for Token {
       Self::SlashEquals => write!(f, "/="),
       Self::String(string) => write!(f, "\"{string}\""),
       Self::Tilde => write!(f, "~"),
+      Self::True => write!(f, "true"),
       Self::Var => write!(f, "var"),
       Self::While => write!(f, "while"),
     }
@@ -388,18 +369,22 @@ impl<'s> TokenStream<'s> {
       return self.stream.locate(ScanError::TokenEmpty);
     }
 
+    // Check for keyword matches.
+    //
+    // If not a keyword, then the word is a token.
     let token = match word.as_str() {
-      // Check for keyword matches.
       "class" => Token::Class,
       "const" => Token::Const,
       "extern" => Token::Extern,
       "else" => Token::Else,
+      "false" => Token::False,
       "for" => Token::For,
       "function" => Token::Function,
       "if" => Token::If,
       "import" => Token::Import,
       "in" => Token::In,
       "return" => Token::Return,
+      "true" => Token::True,
       "var" => Token::Var,
       "while" => Token::While,
 
@@ -421,8 +406,8 @@ impl<'s> TokenStream<'s> {
     }
 
     // Whole (integer) and fractional parts of the number.
-    let mut whole = 0;
-    let mut fractional = 0;
+    let mut whole = BigInt::ZERO;
+    let mut divisor = BigInt::one();
 
     /// Determines whether the peeked character indicates that the number is
     /// done.
@@ -437,36 +422,39 @@ impl<'s> TokenStream<'s> {
 
     // Push digits to the number until the stream is empty or reaches a stop
     // character.
-    while let Some(c) = self.stream.next() {
+    while let Some(c) = self.stream.peek(0) {
       if is_stop(c) {
-        self.stream.back();
         break;
       }
 
+      _ = self.stream.next();
+
       if let Some(digit) = c.to_digit(base) {
-        // Append the new digit to either the whole or fractional part depending
-        // on whether there was previously a dot.
+        // Append the new digit to the whole part.
+        whole = whole * 10 + digit;
+
+        // Update the divisor if this is a floating point number to account
+        // for the base-10 shifting of the digit.
         if past_dot {
-          fractional = fractional * 10 + digit as u64;
-        } else {
-          whole = whole * 10 + digit as u64;
+          divisor *= 10;
         }
-      } else if c == '.' && !past_dot {
-        // If one dot occurs in the number, then record the fractional part.
+      } else if c == '.' && !past_dot && base == 10 {
+        // If a dot is found in the middle of a base-10 number, then it must be
+        // a floating point number.
         past_dot = true;
-      } else if i == 1 && whole == 0 {
-        // Change base if number starts with 0b, 0o, or 0x.
-        match c {
-          'b' => base = 2,
-          'o' => base = 8,
-          'x' => base = 16,
-          _ => {},
-        }
+      } else if i == 1 && whole == BigInt::ZERO {
+        base = match c {
+          'b' => 2,
+          'o' => 8,
+          'x' => 16,
+          c => return self.stream.locate(ScanError::BaseUnrecognized(c))
+        };
       } else {
         return self.stream.locate(ScanError::NumberCharacter(c));
       }
 
-      // Advance to the next character.
+      // Increment the loop counter for the base specifier.
+      // TODO: Consider peeking the base specifier at the start instead.
       i += 1;
     }
 
@@ -478,9 +466,9 @@ impl<'s> TokenStream<'s> {
     // Pass back either an integer for float depending on whether a dot was
     // present.
     if past_dot {
-      Ok(Token::Float { negative, whole, fractional })
+      Ok(Token::Float(BigRational::new(whole, divisor)))
     } else {
-      Ok(Token::Integer { negative, absolute: whole })
+      Ok(Token::Integer(whole))
     }
   }
 
@@ -783,6 +771,9 @@ impl Scanner {
 /// An error that can occur while scanning tokens.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ScanError {
+  /// The base specifier of a number is unrecognized (`0b`, `0o`, or `0x`).
+  BaseUnrecognized(char),
+
   /// A character declaration is empty. (`''`)
   CharacterEmpty,
 
@@ -807,6 +798,9 @@ pub enum ScanError {
 impl Display for ScanError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
+      Self::BaseUnrecognized(c) => {
+        write!(f, "unrecognized base specifier '{c}'")
+      },
       Self::CharacterEmpty => {
         write!(f, "character empty")
       },

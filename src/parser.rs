@@ -1,6 +1,7 @@
 //! Components related to parsing a Weave abstract syntax tree (AST).
 
 use crate::{Result, scanner::{Token, TokenStream}};
+use num::{BigInt, BigRational, Signed};
 use std::fmt::{self, Display, Formatter};
 
 /// A parser that produces an abstract syntax tree (AST).
@@ -92,11 +93,43 @@ impl Parse for Scoped {
 
 /// A datatype identifier.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Type(Scoped);
+pub struct Type {
+  /// The identifier of the type.
+  pub identifier: Scoped,
+
+  /// Array.
+  pub array: Vec<Option<BigInt>>,
+}
 
 impl Parse for Type {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    Ok(Self(parser.parse::<Scoped>()?))
+    let identifier = parser.parse::<Scoped>()?;
+    let mut array = Vec::new();
+
+    while parser.stream.peek(0)? == Token::BracketLeft {
+      _ = parser.stream.next();
+
+      let length = match parser.stream.peek(0)? {
+        Token::Integer(int) => {
+          if int.is_negative() {
+            return parser.locate(ParseError::ArrayLengthNegative(int));
+          }
+
+          _ = parser.stream.next();
+          Some(int)
+        },
+        _ => None,
+      };
+
+      array.push(length);
+
+      parser.expect(Token::BracketRight)?;
+    }
+
+    Ok(Type {
+      identifier,
+      array,
+    })
   }
 }
 
@@ -224,25 +257,10 @@ pub enum Literal {
   Character(char),
 
   /// A floating point number.
-  Float {
-    /// Whether the float is negative.
-    negative: bool,
-
-    /// The whole portion of the float.
-    whole: u64,
-
-    /// The fractional portion of the float (after the decimal).
-    fractional: u64,
-  },
+  Float(BigRational),
 
   /// An integer number.
-  Integer {
-    /// Whether the integer is negative.
-    negative: bool,
-
-    /// The absolute value of the integer.
-    absolute: u64,
-  },
+  Integer(BigInt),
 
   /// A string.
   String(Box<str>),
@@ -251,18 +269,10 @@ pub enum Literal {
 impl Parse for Literal {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let literal = match parser.stream.next()? {
-      Token::Character(c) => {
-        Literal::Character(c)
-      },
-      Token::Float { negative, whole, fractional } => {
-        Literal::Float { negative, whole, fractional }
-      },
-      Token::Integer { negative, absolute } => {
-        Literal::Integer { negative, absolute }
-      },
-      Token::String(value) => {
-        Literal::String(value)
-      },
+      Token::Character(c) => Literal::Character(c),
+      Token::Float(float) => Literal::Float(float),
+      Token::Integer(int) => Literal::Integer(int),
+      Token::String(value) => Literal::String(value),
       token => return parser.unexpected(token),
     };
 
@@ -328,8 +338,8 @@ impl Parse for Expression {
 
       // Literals.
       Token::Character(_)
-      | Token::Float { .. }
-      | Token::Integer { .. }
+      | Token::Float(_)
+      | Token::Integer(_)
       | Token::String(_) => {
         let literal = parser.parse::<Literal>()?;
         Expression::Literal(literal)
@@ -537,6 +547,9 @@ pub struct Declaration {
   /// The identifier of the variable being declared.
   pub variable: Identifier,
 
+  /// The type of the variable being declared.
+  pub typ: Option<Type>,
+
   /// The expression to be initially assigned to the variable.
   pub expression: Option<Expression>,
 }
@@ -551,6 +564,14 @@ impl Parse for Declaration {
 
     let variable = parser.parse::<Identifier>()?;
 
+    let typ = match parser.stream.peek(0)? {
+      Token::Colon => {
+        _ = parser.stream.next();
+        Some(parser.parse::<Type>()?)
+      },
+      _ => None,
+    };
+
     let expression = match parser.stream.peek(0)? {
       Token::Equals => {
         _ = parser.stream.next();
@@ -562,6 +583,7 @@ impl Parse for Declaration {
     Ok(Declaration {
       mutable,
       variable,
+      typ,
       expression,
     })
   }
@@ -976,6 +998,9 @@ impl Parse for Unit {
 /// An error that can occur while parsing the AST.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ParseError {
+  /// A static array length is negative.
+  ArrayLengthNegative(BigInt),
+
   /// A token that appears is unexpected (does not fit the grammar).
   TokenUnexpected(Token),
 }
@@ -983,7 +1008,12 @@ pub enum ParseError {
 impl Display for ParseError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
-      Self::TokenUnexpected(token) => write!(f, "unexpected token: {token}"),
+      Self::ArrayLengthNegative(length) => {
+        write!(f, "negative array length: {length}")
+      },
+      Self::TokenUnexpected(token) => {
+        write!(f, "unexpected token: {token}")
+      },
     }
   }
 }
