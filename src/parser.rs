@@ -1,6 +1,6 @@
 //! Components related to parsing a Weave abstract syntax tree (AST).
 
-use crate::{Result, scanner::{Token, TokenStream}};
+use crate::{Result, lexer::{Token, TokenStream}};
 use num::{BigInt, BigRational, Signed};
 use std::fmt::{self, Display, Formatter};
 

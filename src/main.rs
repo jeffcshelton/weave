@@ -1,14 +1,15 @@
-use std::process;
+//! The Weave compiler terminal application.
 
 use clap::{Parser as CommandParser, Subcommand};
-use weave::{Parser, Result, Scanner, parser::Unit};
+use std::process;
+use weave::{Lexer, Parser, Result, parser::Unit};
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {
-  Parse {
+  Lex {
     paths: Vec<String>,
   },
-  Scan {
+  Parse {
     paths: Vec<String>,
   },
 }
@@ -19,7 +20,7 @@ struct Args {
   command: Command,
 }
 
-// Reserve main for error handling.
+// `main` is reserved for error handling.
 fn main() {
   if let Err(error) = delegate() {
     eprintln!("\x1b[31;1merror\x1b[0m: {error}");
@@ -31,32 +32,32 @@ fn delegate() -> Result<()> {
   let args = Args::parse();
 
   match args.command {
-    Command::Parse { paths } => {
-      let mut scanner = Scanner::empty();
+    Command::Lex { paths } => {
+      let mut lexer = Lexer::empty();
 
       for path in &paths {
-        scanner.load(path)?;
+        lexer.load(path)?;
 
-        let mut parser = Parser::new(scanner.stream());
+        println!("--- \x1b[1m{path}\x1b[0m ---");
+
+        for token in lexer.stream() {
+          println!("{:?}", token?);
+        }
+
+        println!();
+      }
+    },
+    Command::Parse { paths } => {
+      let mut lexer = Lexer::empty();
+
+      for path in &paths {
+        lexer.load(path)?;
+
+        let mut parser = Parser::new(lexer.stream());
         let unit = parser.parse::<Unit>()?;
 
         println!("--- \x1b[1m{path}\x1b[0m ---");
         println!("{unit:#?}");
-        println!();
-      }
-    },
-    Command::Scan { paths } => {
-      let mut scanner = Scanner::empty();
-
-      for path in &paths {
-        scanner.load(path)?;
-
-        println!("--- \x1b[1m{path}\x1b[0m ---");
-
-        for token in scanner.stream() {
-          println!("{:?}", token?);
-        }
-
         println!();
       }
     },

@@ -1,10 +1,10 @@
-//! All components related to scanning a source file into Weave tokens.
+//! All components related to lexing a source file into Weave tokens.
 
 use crate::{source::{Point, Source, SourceIterator}, Result};
 use num::{BigInt, BigRational, One};
 use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range};
 
-/// A single scanner token.
+/// A single lexer token.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Token {
   /// `&`
@@ -299,7 +299,7 @@ macro_rules! consume {
         $stream.next();
         consume!(priv $base, $stream, $default; $({ $($tail)* })?)
       },)*
-      _ => return $stream.locate(ScanError::TokenInvalid),
+      _ => return $stream.locate(LexError::TokenInvalid),
     }
   };
 }
@@ -366,7 +366,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if word.len() == 0 {
-      return self.stream.locate(ScanError::TokenEmpty);
+      return self.stream.locate(LexError::TokenEmpty);
     }
 
     // Check for keyword matches.
@@ -447,10 +447,10 @@ impl<'s> TokenStream<'s> {
           'b' => 2,
           'o' => 8,
           'x' => 16,
-          c => return self.stream.locate(ScanError::BaseUnrecognized(c))
+          c => return self.stream.locate(LexError::BaseUnrecognized(c))
         };
       } else {
-        return self.stream.locate(ScanError::NumberCharacter(c));
+        return self.stream.locate(LexError::NumberCharacter(c));
       }
 
       // Increment the loop counter for the base specifier.
@@ -460,7 +460,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if i == 0 {
-      return self.stream.locate(ScanError::TokenEmpty);
+      return self.stream.locate(LexError::TokenEmpty);
     }
 
     // Pass back either an integer for float depending on whether a dot was
@@ -571,7 +571,7 @@ impl<'s> TokenStream<'s> {
     if closed {
       Ok(Token::String(content.into_boxed_str()))
     } else {
-      self.stream.locate(ScanError::LiteralNotClosed)
+      self.stream.locate(LexError::LiteralNotClosed)
     }
   }
 
@@ -580,22 +580,22 @@ impl<'s> TokenStream<'s> {
     self.stream.next();
 
     let Some(c) = self.stream.next() else {
-      return self.stream.locate(ScanError::LiteralNotClosed);
+      return self.stream.locate(LexError::LiteralNotClosed);
     };
 
     let c = match c {
       '\\' => self.scan_escape()?,
       '\n' | '\r' => {
-        return self.stream.locate(ScanError::LiteralNotClosed);
+        return self.stream.locate(LexError::LiteralNotClosed);
       },
       '\'' => {
-        return self.stream.locate(ScanError::CharacterEmpty);
+        return self.stream.locate(LexError::CharacterEmpty);
       },
       c => c,
     };
 
     if self.stream.next() != Some('\'') {
-      return self.stream.locate(ScanError::LiteralNotClosed);
+      return self.stream.locate(LexError::LiteralNotClosed);
     }
 
     Ok(Token::Character(c))
@@ -603,7 +603,7 @@ impl<'s> TokenStream<'s> {
 
   fn scan_escape(&mut self) -> Result<char> {
     let Some(escape) = self.stream.next() else {
-      return self.stream.locate(ScanError::LiteralNotClosed);
+      return self.stream.locate(LexError::LiteralNotClosed);
     };
 
     let c = match escape {
@@ -642,7 +642,7 @@ impl<'s> TokenStream<'s> {
 
       // Invalid escape sequence
       escape => {
-        return self.stream.locate(ScanError::EscapeInvalid(escape));
+        return self.stream.locate(LexError::EscapeInvalid(escape));
       },
     };
 
@@ -663,7 +663,7 @@ impl<'s> TokenStream<'s> {
     // 3. Delimiter - A single-character symbol token.
     //
     // Notably, this does not account for floating point numbers that start with
-    // a '.', which this scanner does not support.
+    // a '.', which this lexer does not support.
     let Some(first) = self.stream.peek(0) else {
       return Ok((Token::EOF, start.clone()..start));
     };
@@ -736,27 +736,27 @@ impl<'s> Iterator for TokenStream<'s> {
   }
 }
 
-/// A token scanner that operates on source files.
+/// A lexer that produces tokens by scanning source files.
 #[derive(Clone, Debug)]
-pub struct Scanner {
-  /// Contents of the source file read to create the scanner.
+pub struct Lexer {
+  /// Contents of the source file read to create the lexer.
   source: Source,
 }
 
-impl Scanner {
-  /// Constructs a new `Scanner` by reading from a file path.
+impl Lexer {
+  /// Constructs a new `Lexer` by reading from a file path.
   pub fn from_path(path: &str) -> Result<Self> {
-    let mut scanner = Scanner::empty();
-    scanner.load(path)?;
-    Ok(scanner)
+    let mut lexer = Self::empty();
+    lexer.load(path)?;
+    Ok(lexer)
   }
 
-  /// Constructs an empty scanner that only yields EOF.
+  /// Constructs an empty lexer that only yields EOF.
   pub fn empty() -> Self {
     Self { source: Source::empty() }
   }
 
-  /// Loads a new source file into the scanner.
+  /// Loads a new source file into the lexer.
   pub fn load(&mut self, path: &str) -> Result<()> {
     self.source = Source::read_path(path)?;
     Ok(())
@@ -768,9 +768,9 @@ impl Scanner {
   }
 }
 
-/// An error that can occur while scanning tokens.
+/// An error that can occur while lexing tokens.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum ScanError {
+pub enum LexError {
   /// The base specifier of a number is unrecognized (`0b`, `0o`, or `0x`).
   BaseUnrecognized(char),
 
@@ -795,7 +795,7 @@ pub enum ScanError {
   TokenInvalid,
 }
 
-impl Display for ScanError {
+impl Display for LexError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
       Self::BaseUnrecognized(c) => {
@@ -823,4 +823,4 @@ impl Display for ScanError {
   }
 }
 
-impl std::error::Error for ScanError {}
+impl std::error::Error for LexError {}

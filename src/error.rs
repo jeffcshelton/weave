@@ -1,6 +1,6 @@
 //! Weave error definitions and conversions.
 
-use crate::{parser::ParseError, scanner::ScanError, source::Point};
+use crate::{parser::ParseError, lexer::LexError, source::Point};
 use std::{fmt::{self, Display, Formatter}, io, ops::Range, sync::Arc};
 
 /// Any error that can be produced by Weave.
@@ -10,13 +10,13 @@ pub enum Error {
   /// Wraps a `std::io::Error`.
   IO(Arc<io::Error>),
 
+  /// Error originating from the lexer, with a location in a source file.
+  /// Wraps a `LexError`.
+  Lex(LexError, Point),
+
   /// Error originating from the parser, with a location in a source file.
   /// Wraps a `ParseError`.
   Parse(ParseError, Range<Point>),
-
-  /// Error originating from the scanner, with a location in a source file.
-  /// Wraps a `ScanError`.
-  Scan(ScanError, Point),
 }
 
 impl Display for Error {
@@ -26,7 +26,7 @@ impl Display for Error {
       Error::Parse(error, range) => {
         write!(f, "parse @ ({} - {}): {error}", range.start, range.end)
       },
-      Error::Scan(error, point) => {
+      Error::Lex(error, point) => {
         write!(f, "scan @ {point}: {error}")
       },
     }
@@ -47,9 +47,9 @@ impl From<(ParseError, Range<Point>)> for Error {
   }
 }
 
-impl From<(ScanError, Point)> for Error {
-  fn from((error, point): (ScanError, Point)) -> Self {
-    Error::Scan(error, point)
+impl From<(LexError, Point)> for Error {
+  fn from((error, point): (LexError, Point)) -> Self {
+    Error::Lex(error, point)
   }
 }
 
