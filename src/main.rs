@@ -2,7 +2,7 @@
 
 use clap::{Parser as CommandParser, Subcommand};
 use std::process;
-use weave::{Lexer, Parser, Result, parser::Unit};
+use weave::{parser::Unit, Lexer, Parser, Result};
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {

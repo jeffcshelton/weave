@@ -25,11 +25,17 @@ pub enum Token {
   /// `>=`
   AngleRightEquals,
 
+  /// `->`
+  Arrow,
+
   /// `*`
   Asterisk,
 
   /// `*=`
   AsteriskEquals,
+
+  /// `@`
+  At,
 
   /// `{`
   BraceLeft,
@@ -42,6 +48,9 @@ pub enum Token {
 
   /// `]`
   BracketRight,
+
+  /// `break`
+  Break,
 
   /// `^`
   Caret,
@@ -58,17 +67,17 @@ pub enum Token {
   /// `:`
   Colon,
 
-  /// `const`
-  Const,
-
   /// `,`
   Comma,
 
+  /// `const`
+  Const,
+
+  /// `continue`
+  Continue,
+
   /// `-`
   Dash,
-
-  /// `->`
-  DashAngleRight,
 
   /// `-=`
   DashEquals,
@@ -147,6 +156,9 @@ pub enum Token {
   /// Must begin with [A-Za-z_].
   Identifier(Box<str>),
 
+  /// `--`
+  MinusMinus,
+
   /// `(`
   ParenthesisLeft,
 
@@ -171,8 +183,17 @@ pub enum Token {
   /// `+=`
   PlusEquals,
 
+  /// `++`
+  PlusPlus,
+
   /// `return`
   Return,
+
+  /// `self`
+  ///
+  /// Unfortunately, the identifier `Self` is a reserved keyword in Rust, so it
+  /// cannot be used here. The alternative `Self_` was chosen as a stand-in.
+  Self_,
 
   /// `;`
   Semicolon,
@@ -185,6 +206,9 @@ pub enum Token {
 
   /// A string literal, beginning and ending with double quotes.
   String(Box<str>),
+
+  /// `struct`
+  Struct,
 
   /// `~`
   Tilde,
@@ -208,21 +232,24 @@ impl Display for Token {
       Self::AngleLeftEquals => write!(f, "<="),
       Self::AngleRight => write!(f, ">"),
       Self::AngleRightEquals => write!(f, ">="),
+      Self::Arrow => write!(f, "->"),
       Self::Asterisk => write!(f, "*"),
       Self::AsteriskEquals => write!(f, "*="),
+      Self::At => write!(f, "@"),
       Self::BraceLeft => write!(f, "{{"),
       Self::BraceRight => write!(f, "}}"),
       Self::BracketLeft => write!(f, "["),
       Self::BracketRight => write!(f, "]"),
+      Self::Break => write!(f, "break"),
       Self::Caret => write!(f, "^"),
       Self::CaretEquals => write!(f, "^="),
       Self::Character(c) => write!(f, "'{c}'"),
       Self::Class => write!(f, "class"),
       Self::Colon => write!(f, ":"),
-      Self::Const => write!(f, "const"),
       Self::Comma => write!(f, ","),
+      Self::Const => write!(f, "const"),
+      Self::Continue => write!(f, "continue"),
       Self::Dash => write!(f, "-"),
-      Self::DashAngleRight => write!(f, "->"),
       Self::DashEquals => write!(f, "-="),
       Self::DoubleAmpersand => write!(f, "&&"),
       Self::DoubleAngleLeft => write!(f, "<<"),
@@ -248,6 +275,7 @@ impl Display for Token {
       Self::In => write!(f, "in"),
       Self::Integer(integer) => write!(f, "{integer}"),
       Self::Identifier(identifier) => write!(f, "{identifier}"),
+      Self::MinusMinus => write!(f, "--"),
       Self::ParenthesisLeft => write!(f, "("),
       Self::ParenthesisRight => write!(f, ")"),
       Self::Percent => write!(f, "%"),
@@ -256,11 +284,14 @@ impl Display for Token {
       Self::PipeEquals => write!(f, "|="),
       Self::Plus => write!(f, "+"),
       Self::PlusEquals => write!(f, "+="),
+      Self::PlusPlus => write!(f, "++"),
       Self::Return => write!(f, "return"),
+      Self::Self_ => write!(f, "self"),
       Self::Semicolon => write!(f, ";"),
       Self::Slash => write!(f, "/"),
       Self::SlashEquals => write!(f, "/="),
       Self::String(string) => write!(f, "\"{string}\""),
+      Self::Struct => write!(f, "struct"),
       Self::Tilde => write!(f, "~"),
       Self::True => write!(f, "true"),
       Self::Var => write!(f, "var"),
@@ -304,6 +335,81 @@ macro_rules! consume {
   };
 }
 
+/// Implemented on objects onto which tokens can be written.
+pub trait TokenWriter: Sized {
+  /// Writes a single token to the `TokenWriter`.
+  fn write_one(&mut self, token: Token) -> Result<()>;
+
+  /// Writes all tokens of an object implementing `Tokenize` to the
+  /// `TokenWriter`.
+  fn write(&mut self, item: impl Tokenize) -> Result<()> {
+    item.tokenize(self)
+  }
+
+  /// Tokenizes an iterator of objects and writes their tokens to the
+  /// `TokenWriter`, joined with a delimiter token.
+  fn join<'t, I, T>(&mut self, items: I, inter: Token) -> Result<()>
+  where
+    I: IntoIterator<Item = &'t T>,
+    T: Tokenize + 't,
+  {
+    let mut iter = items.into_iter();
+
+    if let Some(first) = iter.next() {
+      self.write(first)?;
+    }
+
+    while let Some(item) = iter.next() {
+      self.write_one(inter.clone())?;
+      self.write(item)?;
+    }
+
+    Ok(())
+  }
+}
+
+impl TokenWriter for Vec<Token> {
+  fn write_one(&mut self, token: Token) -> Result<()> {
+    self.push(token);
+    Ok(())
+  }
+}
+
+/// Implemented on objects which can be converted into a series of tokens.
+pub trait Tokenize {
+  /// Converts the object into a series of tokens and writes them, in order, to
+  /// a `TokenWriter`.
+  fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()>;
+}
+
+impl<T> Tokenize for &T where T: Tokenize {
+  fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
+    (*self).tokenize(writer)
+  }
+}
+
+impl<T> Tokenize for Box<T> where T: Tokenize {
+  fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
+    (&**self).tokenize(writer)
+  }
+}
+
+impl<T> Tokenize for Option<T> where T: Tokenize {
+  fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
+    if let Some(inner) = self {
+      inner.tokenize(writer)?;
+    }
+
+    Ok(())
+  }
+}
+
+impl Tokenize for Box<str> {
+  fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
+    writer.write_one(Token::String(self.clone()))
+  }
+}
+
 /// A peekable stream that produces tokens.
 #[derive(Clone, Debug)]
 pub struct TokenStream<'s> {
@@ -329,11 +435,12 @@ impl<'s> TokenStream<'s> {
   /// Advances the internal iterator past any whitespace at the front.
   /// Additionally updates the program point, accounting for newlines.
   fn skip_whitespace(&mut self) {
-    while let Some(c) = self.stream.next() {
+    while let Some(c) = self.stream.peek(0) {
       if !c.is_whitespace() {
-        self.stream.back();
         break;
       }
+
+      self.stream.next();
     }
   }
 
@@ -355,12 +462,12 @@ impl<'s> TokenStream<'s> {
     // `peek` must be called here instead of `next` because the stop character
     // may not be whitespace, it which case it will be scanned as the next
     // token.
-    while let Some(c) = self.stream.next() {
+    while let Some(c) = self.stream.peek(0) {
       if is_stop(c) {
-        self.stream.back();
         break;
       }
 
+      self.stream.next();
       word.push(c);
     }
 
@@ -373,8 +480,10 @@ impl<'s> TokenStream<'s> {
     //
     // If not a keyword, then the word is a token.
     let token = match word.as_str() {
+      "break" => Token::Break,
       "class" => Token::Class,
       "const" => Token::Const,
+      "continue" => Token::Continue,
       "extern" => Token::Extern,
       "else" => Token::Else,
       "false" => Token::False,
@@ -384,6 +493,8 @@ impl<'s> TokenStream<'s> {
       "import" => Token::Import,
       "in" => Token::In,
       "return" => Token::Return,
+      "self" => Token::Self_,
+      "struct" => Token::Struct,
       "true" => Token::True,
       "var" => Token::Var,
       "while" => Token::While,
@@ -492,6 +603,7 @@ impl<'s> TokenStream<'s> {
       '*' => Asterisk {
         '=' => AsteriskEquals,
       },
+      '@' => At,
       '{' => BraceLeft,
       '}' => BraceRight,
       '[' => BracketLeft,
@@ -504,8 +616,9 @@ impl<'s> TokenStream<'s> {
       },
       ',' => Comma,
       '-' => Dash {
-        '>' => DashAngleRight,
+        '>' => Arrow,
         '=' => DashEquals,
+        '-' => MinusMinus,
       },
       '.' => Dot,
       '=' => Equals {
@@ -525,6 +638,7 @@ impl<'s> TokenStream<'s> {
       },
       '+' => Plus {
         '=' => PlusEquals,
+        '+' => PlusPlus,
       },
       ';' => Semicolon,
       '/' => Slash {
