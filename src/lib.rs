@@ -9,4 +9,4 @@ pub mod source;
 
 pub use error::{Error, Result};
 pub use parser::Parser;
-pub use lexer::Lexer;
+pub use lexer::{Lexer, Token};
