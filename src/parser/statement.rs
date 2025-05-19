@@ -1,6 +1,6 @@
 //! Statement components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use super::{AssignmentOperator, Expression, Identifier, Parse, Parser, Type};
 
 /// An assignment operation.

@@ -2,10 +2,17 @@
 
 use clap::{Parser as CommandParser, Subcommand};
 use std::process;
-use weave::{parser::Unit, Lexer, Parser, Result};
+use weave::{
+  lexer::token::Tokenize,
+  parser::{Expression, Unit},
+  Lexer,
+  Parser,
+  Result,
+};
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {
+  Expr { path: String },
   Lex {
     paths: Vec<String>,
   },
@@ -32,6 +39,13 @@ fn delegate() -> Result<()> {
   let args = Args::parse();
 
   match args.command {
+    Command::Expr { path } => {
+      let mut lexer = Lexer::from_path(&path)?;
+      let mut parser = Parser::new(lexer.stream());
+      let expr = parser.parse::<Expression>()?;
+
+      println!("{}", expr.parenthesized().tokens());
+    },
     Command::Lex { paths } => {
       let mut lexer = Lexer::empty();
 

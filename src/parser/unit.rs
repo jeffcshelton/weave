@@ -1,6 +1,6 @@
 //! Compilation unit components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use super::{Function, Import, Parse, Parser};
 
 /// A single compilation unit, corresponding to one source file.
@@ -29,7 +29,7 @@ impl Parse for Unit {
 
 impl Tokenize for Unit {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.imports)?;
+    writer.write(&*self.imports)?;
     writer.write(&self.functions)?;
     Ok(())
   }

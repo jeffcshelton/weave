@@ -1,6 +1,6 @@
 //! Type components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use num::{BigInt, Signed};
 use super::{Expression, Parse, ParseError, Parser};
 
@@ -95,7 +95,7 @@ impl Tokenize for Type {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     match self {
       Self::Array { base, size } => {
-        writer.write(base)?;
+        writer.write(&**base)?;
 
         for dimension in size {
           writer.write_one(Token::BracketLeft)?;

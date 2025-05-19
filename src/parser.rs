@@ -16,7 +16,11 @@ pub use statement::*;
 pub use types::*;
 pub use unit::*;
 
-use crate::{Result, lexer::{Token, TokenStream, TokenWriter, Tokenize}};
+use crate::{
+  Result,
+  Token,
+  lexer::{TokenStream, token::{TokenWriter, Tokenize}},
+};
 use num::BigInt;
 use std::fmt::{self, Display, Formatter};
 
@@ -89,6 +93,12 @@ impl Parse for Identifier {
 impl Tokenize for Identifier {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     writer.write_one(Token::Identifier(self.0.clone()))
+  }
+}
+
+impl Display for Identifier {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    write!(f, "{}", self.0)
   }
 }
 

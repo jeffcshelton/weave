@@ -1,6 +1,6 @@
 //! Expression components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use num::{BigInt, BigRational};
 use super::{
   BinaryOperator,
@@ -186,7 +186,7 @@ impl Parse for Box<[ClosureParameter]> {
   }
 }
 
-impl Tokenize for Box<[ClosureParameter]> {
+impl Tokenize for [ClosureParameter] {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     writer.join(self, Token::Comma)
   }
@@ -223,7 +223,7 @@ impl Tokenize for ClosureBody {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     match self {
       Self::Block(block) => writer.write(block),
-      Self::Expression(expression) => writer.write(expression),
+      Self::Expression(expr) => writer.write(&**expr),
     }
   }
 }
@@ -257,7 +257,7 @@ impl Parse for Closure {
 impl Tokenize for Closure {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     writer.write_one(Token::ParenthesisLeft)?;
-    writer.write(&self.parameters)?;
+    writer.write(&*self.parameters)?;
     writer.write_one(Token::ParenthesisRight)?;
     writer.write_one(Token::Arrow)?;
     writer.write(&self.body)?;
@@ -331,6 +331,9 @@ pub enum Expression {
   /// A closure function.
   Closure(Closure),
 
+  /// An inner expression enclosed in parentheses.
+  Enclosed(Box<Expression>),
+
   /// A single identifier.
   Identifier(Identifier),
 
@@ -357,6 +360,36 @@ pub enum Expression {
     /// The expression on which the operation is applied.
     inner: Box<Expression>,
   },
+}
+
+impl Expression {
+  /// Constructs a new `Expression` with all operator expressions enclosed in
+  /// parentheses that reflect the order of operations implied by the
+  /// expression tree.
+  pub fn parenthesized(&self) -> Self {
+    match self {
+      Self::Binary { left, operator, right } => {
+        Self::Enclosed(Box::new(Self::Binary {
+          left: Box::new(left.parenthesized()),
+          operator: operator.clone(),
+          right: Box::new(right.parenthesized()),
+        }))
+      },
+      Self::Postfix { inner, operator } => {
+        Self::Enclosed(Box::new(Self::Postfix {
+          inner: Box::new(inner.parenthesized()),
+          operator: operator.clone(),
+        }))
+      },
+      Self::Prefix { operator, inner } => {
+        Self::Enclosed(Box::new(Self::Prefix {
+          operator: operator.clone(),
+          inner: Box::new(inner.parenthesized()),
+        }))
+      },
+      expr => expr.clone(),
+    }
+  }
 }
 
 impl Parse for Expression {
@@ -460,7 +493,7 @@ impl Parse for Expression {
           // the ending parenthesis, which should be a syntax error.
           parser.expect(Token::ParenthesisRight)?;
 
-          inner
+          Expression::Enclosed(Box::new(inner))
         }
       },
 
@@ -556,12 +589,17 @@ impl Tokenize for Expression {
         writer.write(array)?;
       },
       Self::Binary { left, operator, right } => {
-        writer.write(left)?;
+        writer.write(&**left)?;
         writer.write(operator)?;
-        writer.write(right)?;
+        writer.write(&**right)?;
       },
       Self::Closure(closure) => {
         writer.write(closure)?;
+      },
+      Self::Enclosed(inner) => {
+        writer.write_one(Token::ParenthesisLeft)?;
+        writer.write(&**inner)?;
+        writer.write_one(Token::ParenthesisRight)?;
       },
       Self::Identifier(identifier) => {
         writer.write(identifier)?;
@@ -573,16 +611,15 @@ impl Tokenize for Expression {
         writer.write(tuple)?;
       },
       Self::Postfix { inner, operator } => {
-        writer.write(inner)?;
+        writer.write(&**inner)?;
         writer.write(operator)?;
       },
       Self::Prefix { operator, inner } => {
         writer.write(operator)?;
-        writer.write(inner)?;
+        writer.write(&**inner)?;
       },
     }
 
     Ok(())
   }
 }
-

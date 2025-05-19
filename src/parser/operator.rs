@@ -1,7 +1,52 @@
 //! Operator components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
-use super::{Argument, Expression, Parse, Parser};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
+use super::{Argument, Expression, Identifier, Parse, Parser};
+
+/// A precedence class that can be applied to an operator.
+/// Lower precedence class order indicates higher precedence.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Precedence {
+  /// The precedence class of all postfix operators.
+  Postfix,
+
+  /// The precedence class of all prefix operators.
+  Prefix,
+
+  /// The precedence class of binary operators at the multiplicative level,
+  /// including multiplication, division, and modulus.
+  Multiplication,
+
+  /// The precedence class of binary operators at the additive level, including
+  /// addition and subtraction.
+  Addition,
+
+  /// The precedence class of bitwise left and right shift operators.
+  Shift,
+
+  /// The precedence class of bitwise operators except the shifts.
+  Bitwise,
+
+  /// The precedence class of all comparison operators except equality and
+  /// non-equality.
+  Comparison,
+
+  /// The precedence class of equality operators, namely equality and
+  /// non-equality.
+  Equality,
+
+  /// The precedence class of all logical operators.
+  Logical,
+
+  /// The precedence class of all assignment operators.
+  Assignment,
+}
+
+/// Implemented by all operators which require a strict ordering of precedence.
+pub trait Operator {
+  /// Returns the relative precedence of the operator.
+  fn precedence(&self) -> Precedence;
+}
 
 /// An operator that updates its left identifier with the expression on its
 /// right.
@@ -82,6 +127,12 @@ impl Tokenize for AssignmentOperator {
   }
 }
 
+impl Operator for AssignmentOperator {
+  fn precedence(&self) -> Precedence {
+    Precedence::Assignment
+  }
+}
+
 /// An operator that requires left and right expressions as arguments.
 #[deny(unused)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -141,31 +192,6 @@ pub enum BinaryOperator {
   Xor,
 }
 
-// impl BinaryOperator {
-//   pub fn precedence(&self) -> u8 {
-//     match self {
-//       Self::BitwiseAnd => 7,
-//       Self::BitwiseOr => 5,
-//       Self::Divide => 10,
-//       Self::Equals => 4,
-//       Self::GreaterThan => 4,
-//       Self::GreaterThanOrEqualTo => 4,
-//       Self::LessThan => 4,
-//       Self::LessThanOrEqualTo => 4,
-//       Self::LogicalAnd => 3,
-//       Self::LogicalOr => 2,
-//       Self::Minus => 9,
-//       Self::Modulo => 10,
-//       Self::Multiply => 10,
-//       Self::NotEquals => 4,
-//       Self::Plus => 9,
-//       Self::ShiftLeft => 8,
-//       Self::ShiftRight => 8,
-//       Self::Xor => 6,
-//     }
-//   }
-// }
-
 impl Parse for BinaryOperator {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let operator = match parser.stream.next()? {
@@ -221,6 +247,31 @@ impl Tokenize for BinaryOperator {
   }
 }
 
+impl Operator for BinaryOperator {
+  fn precedence(&self) -> Precedence {
+    match self {
+      Self::BitwiseAnd => Precedence::Bitwise,
+      Self::BitwiseOr => Precedence::Bitwise,
+      Self::Divide => Precedence::Multiplication,
+      Self::Equals => Precedence::Equality,
+      Self::GreaterThan => Precedence::Comparison,
+      Self::GreaterThanOrEqualTo => Precedence::Comparison,
+      Self::LessThan => Precedence::Comparison,
+      Self::LessThanOrEqualTo => Precedence::Comparison,
+      Self::LogicalAnd => Precedence::Logical,
+      Self::LogicalOr => Precedence::Logical,
+      Self::Minus => Precedence::Addition,
+      Self::Modulo => Precedence::Multiplication,
+      Self::Multiply => Precedence::Multiplication,
+      Self::NotEquals => Precedence::Equality,
+      Self::Plus => Precedence::Addition,
+      Self::ShiftLeft => Precedence::Shift,
+      Self::ShiftRight => Precedence::Shift,
+      Self::Xor => Precedence::Bitwise,
+    }
+  }
+}
+
 /// A unary operator that is placed after the expression it operates upon.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PostfixOperator {
@@ -242,18 +293,15 @@ pub enum PostfixOperator {
     expression: Box<Expression>,
   },
 
-  /// Member access.
+  /// Path / member access.
   ///
   /// This is not a binary operation because it does not combine two independent
   /// expressions to produce a new value. The right expression is fundamentally
   /// dependent on the value of the left expression. This is not true for binary
   /// operations.
-  Member {
-    /// The right-side expression.
-    ///
-    /// Not all expressions are valid here, but that will be caught later in
-    /// analysis.
-    right: Box<Expression>,
+  Path {
+    /// The chain of member identifiers on the right side.
+    members: Box<[Identifier]>,
   },
 
   /// Scope resolution.
@@ -283,16 +331,18 @@ impl Tokenize for PostfixOperator {
       Self::Increment => writer.write_one(Token::PlusPlus)?,
       Self::Index { expression } => {
         writer.write_one(Token::BracketLeft)?;
-        writer.write(expression)?;
+        writer.write(&**expression)?;
         writer.write_one(Token::BracketRight)?;
       },
-      Self::Member { right } => {
-        writer.write_one(Token::Dot)?;
-        writer.write(right)?;
+      Self::Path { members } => {
+        for member in members {
+          writer.write_one(Token::Dot)?;
+          writer.write(member)?;
+        }
       },
       Self::Scope { right } => {
         writer.write_one(Token::DoubleColon)?;
-        writer.write(right)?;
+        writer.write(&**right)?;
       },
     }
 
@@ -310,8 +360,16 @@ impl Parse for PostfixOperator {
         Self::Index { expression }
       },
       Token::Dot => {
-        Self::Member {
-          right: parser.parse::<Box<Expression>>()?,
+        let mut members = Vec::new();
+        members.push(parser.parse::<Identifier>()?);
+
+        while parser.stream.peek(0)? == Token::Dot {
+          _ = parser.stream.next();
+          members.push(parser.parse::<Identifier>()?);
+        }
+
+        Self::Path {
+          members: members.into_boxed_slice(),
         }
       },
       Token::DoubleColon => {
@@ -331,6 +389,12 @@ impl Parse for PostfixOperator {
     };
 
     Ok(operator)
+  }
+}
+
+impl Operator for PostfixOperator {
+  fn precedence(&self) -> Precedence {
+    Precedence::Postfix
   }
 }
 
@@ -394,5 +458,11 @@ impl Tokenize for PrefixOperator {
     };
 
     writer.write_one(token)
+  }
+}
+
+impl Operator for PrefixOperator {
+  fn precedence(&self) -> Precedence {
+    Precedence::Prefix
   }
 }

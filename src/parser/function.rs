@@ -1,6 +1,6 @@
 //! Function components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use super::{Block, Expression, Identifier, Parse, Parser, Type};
 
 /// A concrete argument passed to a function or closure.

@@ -1,6 +1,6 @@
 //! Import components of the AST.
 
-use crate::{Result, Token, lexer::{TokenWriter, Tokenize}};
+use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use super::{Parse, Parser};
 
 /// An import of another source file.
@@ -54,7 +54,12 @@ impl Tokenize for Import {
       writer.write_one(Token::BraceLeft)?;
     }
 
-    writer.join(&self.files, Token::Comma)?;
+    let files = self.files
+      .iter()
+      .map(|file| Token::String(file.clone()))
+      .collect::<Vec<_>>();
+
+    writer.join(&files, Token::Comma)?;
 
     if self.files.len() > 1 {
       writer.write_one(Token::BraceRight)?;
@@ -78,7 +83,7 @@ impl Parse for Box<[Import]> {
   }
 }
 
-impl Tokenize for Box<[Import]> {
+impl Tokenize for [Import] {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     for import in self {
       writer.write(import)?;
