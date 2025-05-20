@@ -116,8 +116,9 @@ impl<'s> TokenStream<'s> {
       "class" => Token::Class,
       "const" => Token::Const,
       "continue" => Token::Continue,
-      "extern" => Token::Extern,
       "else" => Token::Else,
+      "enum" => Token::Enum,
+      "extern" => Token::Extern,
       "false" => Token::False,
       "for" => Token::For,
       "function" => Token::Function,
@@ -128,6 +129,7 @@ impl<'s> TokenStream<'s> {
       "self" => Token::Self_,
       "struct" => Token::Struct,
       "true" => Token::True,
+      "union" => Token::Union,
       "var" => Token::Var,
       "while" => Token::While,
 

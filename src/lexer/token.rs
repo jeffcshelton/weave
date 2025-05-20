@@ -115,6 +115,9 @@ pub enum Token {
   /// `else`
   Else,
 
+  /// `enum`
+  Enum,
+
   /// `=`
   Equals,
 
@@ -216,6 +219,9 @@ pub enum Token {
   /// `true`
   True,
 
+  /// `union`
+  Union,
+
   /// `var`
   Var,
 
@@ -262,6 +268,7 @@ impl Display for Token {
       Self::Dot => write!(f, "."),
       Self::EOF => write!(f, "<eof>"),
       Self::Else => write!(f, "else"),
+      Self::Enum => write!(f, "enum"),
       Self::Equals => write!(f, "="),
       Self::Exclamation => write!(f, "!"),
       Self::ExclamationEquals => write!(f, "!="),
@@ -294,6 +301,7 @@ impl Display for Token {
       Self::Struct => write!(f, "struct"),
       Self::Tilde => write!(f, "~"),
       Self::True => write!(f, "true"),
+      Self::Union => write!(f, "union"),
       Self::Var => write!(f, "var"),
       Self::While => write!(f, "while"),
     }
@@ -420,6 +428,7 @@ impl TokenWriter for Formatter<'_> {
       | Token::Colon
       | Token::Comma
       | Token::Const
+      | Token::Enum
       | Token::Extern
       | Token::For
       | Token::Function
@@ -428,6 +437,7 @@ impl TokenWriter for Formatter<'_> {
       | Token::Return
       | Token::Semicolon
       | Token::Struct
+      | Token::Union
       | Token::Var
       | Token::While => ("", " "),
 
