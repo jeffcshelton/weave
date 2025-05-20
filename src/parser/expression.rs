@@ -6,6 +6,7 @@ use super::{
   BinaryOperator,
   Block,
   Identifier,
+  Operator,
   Parse,
   Parser,
   PostfixOperator,
@@ -392,8 +393,8 @@ impl Expression {
   }
 }
 
-impl Parse for Expression {
-  fn parse(parser: &mut Parser) -> Result<Self> {
+impl Expression {
+  fn parse_with_power(parser: &mut Parser, min_power: u8) -> Result<Self> {
     let mut expression = match parser.stream.peek(0)? {
       // Arrays.
       Token::BracketLeft => {
@@ -527,38 +528,8 @@ impl Parse for Expression {
       token => return parser.unexpected(token),
     };
 
-    // Match the expression tail.
+    // Match postfix operators.
     match parser.stream.peek(0)? {
-      // Binary operators.
-      Token::Ampersand
-      | Token::AngleLeft
-      | Token::AngleLeftEquals
-      | Token::AngleRight
-      | Token::AngleRightEquals
-      | Token::Asterisk
-      | Token::Caret
-      | Token::Dash
-      | Token::DoubleAmpersand
-      | Token::DoubleAngleLeft
-      | Token::DoubleAngleRight
-      | Token::DoubleEquals
-      | Token::DoublePipe
-      | Token::ExclamationEquals
-      | Token::Percent
-      | Token::Pipe
-      | Token::Plus
-      | Token::Slash => {
-        let operator = parser.parse::<BinaryOperator>()?;
-        let right = parser.parse::<Box<Expression>>()?;
-
-        expression = Expression::Binary {
-          left: Box::new(expression),
-          operator,
-          right,
-        };
-      },
-
-      // Postfix operators.
       Token::BracketLeft
       | Token::Dot
       | Token::DoubleColon
@@ -570,15 +541,51 @@ impl Parse for Expression {
         expression = Expression::Postfix {
           inner: Box::new(expression),
           operator,
-        };
+        }
       },
-
-      // Ignore all other tokens.
-      // They must not be part of the expression.
       _ => {},
     }
 
+    // This is a Pratt Parser implementation that uses "binding power" to
+    // efficiently represent precedence and associativity and construct a tree
+    // of expressions which imply order of operations.
+    //
+    // See: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+    while let Ok(operator) = parser.peek::<BinaryOperator>() {
+      // Determine the binding power of the operator.
+      //
+      // This is determined primarily by precedence, but offset by one between
+      // left and right to differentiate associativity classes.
+      let (left_power, right_power) = operator.binding_power();
+
+      // If the binding power on the left is less than the minimum power to
+      // bind one more sub-expression, then break the loop.
+      //
+      // This translates into immediately returning the expression as-is
+      // because no more tokens can be bound.
+      if left_power < min_power {
+        break;
+      }
+
+      // Otherwise, consume the operator and parse the right expression as a
+      // sub-expression in the binary operation.
+      let operator = parser.parse::<BinaryOperator>()?;
+      let right = Expression::parse_with_power(parser, right_power)?;
+
+      expression = Expression::Binary {
+        left: Box::new(expression),
+        operator,
+        right: Box::new(right),
+      };
+    }
+
     Ok(expression)
+  }
+}
+
+impl Parse for Expression {
+  fn parse(parser: &mut Parser) -> Result<Self> {
+    Expression::parse_with_power(parser, 0)
   }
 }
 

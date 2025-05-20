@@ -3,49 +3,91 @@
 use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use super::{Argument, Expression, Identifier, Parse, Parser};
 
-/// A precedence class that can be applied to an operator.
-/// Lower precedence class order indicates higher precedence.
+/// A precedence class that can be applied to an operator, with relative
+/// ordering.
+///
+/// Farther down indicates higher precedence.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Precedence {
-  /// The precedence class of all postfix operators.
-  Postfix,
+  /// The precedence class of all assignment operators.
+  Assignment,
 
-  /// The precedence class of all prefix operators.
-  Prefix,
-
-  /// The precedence class of binary operators at the multiplicative level,
-  /// including multiplication, division, and modulus.
-  Multiplication,
-
-  /// The precedence class of binary operators at the additive level, including
-  /// addition and subtraction.
-  Addition,
-
-  /// The precedence class of bitwise left and right shift operators.
-  Shift,
-
-  /// The precedence class of bitwise operators except the shifts.
-  Bitwise,
-
-  /// The precedence class of all comparison operators except equality and
-  /// non-equality.
-  Comparison,
+  /// The precedence class of all logical operators.
+  Logical,
 
   /// The precedence class of equality operators, namely equality and
   /// non-equality.
   Equality,
 
-  /// The precedence class of all logical operators.
-  Logical,
+  /// The precedence class of all comparison operators except equality and
+  /// non-equality.
+  Comparison,
 
-  /// The precedence class of all assignment operators.
-  Assignment,
+  /// The precedence class of bitwise operators except the shifts.
+  Bitwise,
+
+  /// The precedence class of bitwise left and right shift operators.
+  Shift,
+
+  /// The precedence class of binary operators at the additive level, including
+  /// addition and subtraction.
+  Addition,
+
+  /// The precedence class of binary operators at the multiplicative level,
+  /// including multiplication, division, and modulus.
+  Multiplication,
+
+  /// The precedence class of all prefix operators.
+  Prefix,
+
+  /// The precedence class of all postfix operators.
+  Postfix,
+}
+
+/// An associativity class determining in what order operations of identical
+/// precedence should be performed.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Associativity {
+  /// When both operators are of the same precedence, the operation on the left
+  /// should be performed first.
+  LeftToRight,
+
+  /// When both operators are of the same precedence, the operation on the right
+  /// should be performed first.
+  RightToLeft,
 }
 
 /// Implemented by all operators which require a strict ordering of precedence.
 pub trait Operator {
+  /// Returns the associativity of the operator.
+  fn associativity(&self) -> Associativity;
+
   /// Returns the relative precedence of the operator.
   fn precedence(&self) -> Precedence;
+
+  /// Returns the binding power of the operator in the form (left, right).
+  fn binding_power(&self) -> (u8, u8) {
+    // The modified precedence is `p * 2 + 1` for two reasons:
+    // 1. Multiplying by 2 is necessary because it must leave room for the
+    //    in-between powers created by applying the associativity increment.
+    // 2. Adding 1 is necessary because it avoids collision with the base-level
+    //    precedence, which is 0.
+    let precedence = (self.precedence() as u8) * 2 + 1;
+    let mut power = (precedence, precedence);
+
+    // Apply the associativity increment to the power corresponding to the
+    // opposite of the preferred direction.
+    //
+    // For example, in the left-to-right case, a binary operator will see two
+    // sides, left and right. In order to prefer left ordering, it must more
+    // strongly bind to the right operand.
+    match self.associativity() {
+      Associativity::LeftToRight => power.1 += 1,
+      Associativity::RightToLeft => power.0 += 1,
+    }
+
+    power
+  }
 }
 
 /// An operator that updates its left identifier with the expression on its
@@ -88,7 +130,7 @@ pub enum AssignmentOperator {
 
 impl Parse for AssignmentOperator {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let operator = match parser.stream.next()? {
+    let operator = match parser.stream.peek(0)? {
       Token::AmpersandEquals => Self::AndEquals,
       Token::AsteriskEquals => Self::MultiplyEquals,
       Token::CaretEquals => Self::XorEquals,
@@ -103,6 +145,7 @@ impl Parse for AssignmentOperator {
       token => return parser.unexpected(token),
     };
 
+    _ = parser.stream.next();
     Ok(operator)
   }
 }
@@ -128,6 +171,10 @@ impl Tokenize for AssignmentOperator {
 }
 
 impl Operator for AssignmentOperator {
+  fn associativity(&self) -> Associativity {
+    Associativity::RightToLeft
+  }
+
   fn precedence(&self) -> Precedence {
     Precedence::Assignment
   }
@@ -194,7 +241,7 @@ pub enum BinaryOperator {
 
 impl Parse for BinaryOperator {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let operator = match parser.stream.next()? {
+    let operator = match parser.stream.peek(0)? {
       Token::Ampersand => Self::BitwiseAnd,
       Token::AngleLeft => Self::LessThan,
       Token::AngleLeftEquals => Self::LessThanOrEqualTo,
@@ -216,6 +263,7 @@ impl Parse for BinaryOperator {
       token => return parser.unexpected(token),
     };
 
+    _ = parser.stream.next();
     Ok(operator)
   }
 }
@@ -248,6 +296,10 @@ impl Tokenize for BinaryOperator {
 }
 
 impl Operator for BinaryOperator {
+  fn associativity(&self) -> Associativity {
+    Associativity::LeftToRight
+  }
+
   fn precedence(&self) -> Precedence {
     match self {
       Self::BitwiseAnd => Precedence::Bitwise,
@@ -352,14 +404,18 @@ impl Tokenize for PostfixOperator {
 
 impl Parse for PostfixOperator {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let operator = match parser.stream.next()? {
+    let operator = match parser.stream.peek(0)? {
       Token::BracketLeft => {
+        _ = parser.stream.next();
+
         let expression = parser.parse::<Box<Expression>>()?;
         parser.expect(Token::BracketRight)?;
 
         Self::Index { expression }
       },
       Token::Dot => {
+        _ = parser.stream.next();
+
         let mut members = Vec::new();
         members.push(parser.parse::<Identifier>()?);
 
@@ -373,18 +429,26 @@ impl Parse for PostfixOperator {
         }
       },
       Token::DoubleColon => {
+        _ = parser.stream.next();
+
         Self::Scope {
           right: parser.parse::<Box<Expression>>()?,
         }
       },
       Token::MinusMinus => Self::Decrement,
       Token::ParenthesisLeft => {
+        _ = parser.stream.next();
+
         let arguments = parser.parse::<Box<[Argument]>>()?;
         parser.expect(Token::ParenthesisRight)?;
 
         Self::Call { arguments }
       },
-      Token::PlusPlus => Self::Increment,
+      Token::PlusPlus => {
+        _ = parser.stream.next();
+
+        Self::Increment
+      },
       token => return parser.unexpected(token),
     };
 
@@ -393,6 +457,10 @@ impl Parse for PostfixOperator {
 }
 
 impl Operator for PostfixOperator {
+  fn associativity(&self) -> Associativity {
+    Associativity::LeftToRight
+  }
+
   fn precedence(&self) -> Precedence {
     Precedence::Postfix
   }
@@ -428,7 +496,7 @@ pub enum PrefixOperator {
 
 impl Parse for PrefixOperator {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let operator = match parser.stream.next()? {
+    let operator = match parser.stream.peek(0)? {
       Token::Ampersand => Self::Reference,
       Token::Asterisk => Self::Dereference,
       Token::Dash => Self::Negative,
@@ -440,6 +508,7 @@ impl Parse for PrefixOperator {
       token => return parser.unexpected(token),
     };
 
+    _ = parser.stream.next();
     Ok(operator)
   }
 }
@@ -462,6 +531,10 @@ impl Tokenize for PrefixOperator {
 }
 
 impl Operator for PrefixOperator {
+  fn associativity(&self) -> Associativity {
+    Associativity::RightToLeft
+  }
+
   fn precedence(&self) -> Precedence {
     Precedence::Prefix
   }

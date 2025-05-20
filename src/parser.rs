@@ -22,18 +22,21 @@ use crate::{
   lexer::{TokenStream, token::{TokenWriter, Tokenize}},
 };
 use num::BigInt;
-use std::fmt::{self, Display, Formatter};
+use std::{any::{Any, TypeId}, fmt::{self, Display, Formatter}};
 
 /// A parser that produces an abstract syntax tree (AST).
-#[derive(Clone, Debug)]
 pub struct Parser<'s> {
   stream: TokenStream<'s>,
+  peeked: Option<Box<dyn Parse>>,
 }
 
 impl<'s> Parser<'s> {
   /// Constructs a `Parser` by reading from a token stream.
   pub fn new(stream: TokenStream<'s>) -> Self {
-    Self { stream }
+    Self {
+      stream,
+      peeked: None,
+    }
   }
 
   /// Expect a specific token to be next. Throw an error if not.
@@ -57,14 +60,74 @@ impl<'s> Parser<'s> {
 
   /// Parse a single parsable structure.
   pub fn parse<T: Parse>(&mut self) -> Result<T> {
-    T::parse(self)
+    if let Some(peeked) = self.peeked.take() {
+      // Coerce the peeked item into an instance of `Any` so that it can be
+      // downcasted below.
+      let any = peeked as Box<dyn Any>;
+
+      // Attempt to downcast the stored peeked item.
+      //
+      // Failure is an internal error resulting from a peek operation, followed
+      // by a parse operation that requires a different type from the peek.
+      let peeked = match any.downcast::<T>() {
+        Ok(inner) => *inner,
+        Err(actual) => {
+          return self.locate(ParseError::TypeMismatch {
+            actual: actual.type_id(),
+            expected: TypeId::of::<T>(),
+          });
+        },
+      };
+
+      Ok(peeked)
+    } else {
+      T::parse(self)
+    }
+  }
+
+  /// Peeks the next item that can be parsed without consuming it.
+  ///
+  /// NOTE: While this method does not consume the parsed item, it does modify
+  /// the underlying `stream` object to advance past it.
+  pub fn peek<T: Parse>(&mut self) -> Result<&T> {
+    if self.peeked.is_none() {
+      let item = Box::new(T::parse(self)?);
+      self.peeked = Some(item as Box<dyn Parse>);
+    }
+
+    // Fundamentally, since this function returns a _reference_ to the peeked
+    // item, it must do this redundant type casting. This is due to the fact
+    // that the reference must be pointing to the contents of the instance of
+    // `Parser`, because the item is moved into `self`. However, when moved into
+    // `self.peeked`, the underlying type is erased, so it must be downcast.
+
+    // Cast the currently peeked item into a &dyn Any for downcasting.
+    //
+    // SAFETY: This unwrap is safe because if `peeked` was `None` before, it is
+    // populated above.
+    let any = self.peeked
+      .as_ref()
+      .map(|peeked| &**peeked)
+      .unwrap() as &dyn Any;
+
+    // Attempt to downcast the peeked item.
+    // Failures are identical to those described in `parse`.
+    match any.downcast_ref() {
+      Some(inner) => Ok(inner),
+      None => {
+        return self.locate(ParseError::TypeMismatch {
+          actual: any.type_id(),
+          expected: TypeId::of::<T>(),
+        })
+      },
+    }
   }
 }
 
 /// Implements the ability to parse a structure.
-pub trait Parse where Self: Sized {
+pub trait Parse: Any {
   /// Parse an instance of the type using a pre-constructed parser.
-  fn parse(parser: &mut Parser) -> Result<Self>;
+  fn parse(parser: &mut Parser) -> Result<Self> where Self: Sized;
 }
 
 // Implement `Parse` for `Box<T>` where it's already implemented for `T`.
@@ -116,6 +179,16 @@ pub enum ParseError {
 
   /// A token that appears is unexpected (does not fit the grammar).
   TokenUnexpected(Token),
+
+  /// The expected type does not match the type of the last peeked item
+  /// (internal).
+  TypeMismatch {
+    /// The ID of the actual type received after downcasting.
+    actual: TypeId,
+
+    /// The ID of the expected type in the generic.
+    expected: TypeId,
+  },
 }
 
 impl Display for ParseError {
@@ -124,14 +197,11 @@ impl Display for ParseError {
       Self::ArrayLengthNegative(length) => {
         write!(f, "negative array length: {length}")
       },
-      Self::BracketMismatch => {
-        write!(f, "mismatching brackets")
-      },
-      Self::CommaTrailing => {
-        write!(f, "trailing comma unexpected")
-      },
-      Self::TokenUnexpected(token) => {
-        write!(f, "unexpected token: {token}")
+      Self::BracketMismatch => write!(f, "mismatching brackets"),
+      Self::CommaTrailing => write!(f, "trailing comma unexpected"),
+      Self::TokenUnexpected(token) => write!(f, "unexpected token: {token}"),
+      Self::TypeMismatch { actual, expected } => {
+        write!(f, "expected type {expected:?}, got {actual:?} (internal)")
       },
     }
   }
