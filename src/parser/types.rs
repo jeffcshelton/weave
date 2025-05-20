@@ -32,7 +32,7 @@ impl Parse for Type {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let typ = match parser.stream.peek(0)? {
       Token::Identifier(_) => {
-        let expression = parser.parse::<Expression>()?;
+        let expression = parser.consume::<Expression>()?;
         let mut size = Vec::new();
 
         // Handle array types.
@@ -72,7 +72,7 @@ impl Parse for Type {
         let mut subtypes = Vec::new();
 
         loop {
-          let subtype = parser.parse::<Type>()?;
+          let subtype = parser.consume::<Type>()?;
           subtypes.push(subtype);
 
           match parser.stream.next()? {

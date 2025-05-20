@@ -17,14 +17,14 @@ impl Parse for Argument {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let label = match parser.stream.peek(1)? {
       Token::Colon => {
-        let label = parser.parse::<Identifier>()?;
+        let label = parser.consume::<Identifier>()?;
         _ = parser.stream.next();
         Some(label)
       },
       _ => None,
     };
 
-    let value = parser.parse::<Expression>()?;
+    let value = parser.consume::<Expression>()?;
 
     Ok(Self {
       label,
@@ -56,7 +56,7 @@ impl Parse for Box<[Argument]> {
 
     loop {
       // Parse the next argument.
-      arguments.push(parser.parse::<Argument>()?);
+      arguments.push(parser.consume::<Argument>()?);
 
       // Parse next argument if a comma is reached.
       // Stop parsing upon reaching a right parenthesis.
@@ -89,10 +89,10 @@ pub struct FunctionParameter {
 
 impl Parse for FunctionParameter {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let identifier = parser.parse::<Identifier>()?;
+    let identifier = parser.consume::<Identifier>()?;
     parser.expect(Token::Colon)?;
 
-    let typ = parser.parse::<Type>()?;
+    let typ = parser.consume::<Type>()?;
 
     Ok(FunctionParameter {
       identifier,
@@ -122,7 +122,7 @@ impl Parse for Box<[FunctionParameter]> {
 
     loop {
       // Parse the next parameter.
-      parameters.push(parser.parse::<FunctionParameter>()?);
+      parameters.push(parser.consume::<FunctionParameter>()?);
 
       // Parse next parameter if a comma is reached.
       // Stop parsing upon reaching a right parenthesis.
@@ -163,21 +163,21 @@ impl Parse for Function {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::Function)?;
 
-    let identifier = parser.parse::<Identifier>()?;
+    let identifier = parser.consume::<Identifier>()?;
 
     parser.expect(Token::ParenthesisLeft)?;
-    let parameters = parser.parse::<Box<[FunctionParameter]>>()?;
+    let parameters = parser.consume::<Box<[FunctionParameter]>>()?;
     parser.expect(Token::ParenthesisRight)?;
 
     let return_type = match parser.stream.peek(0)? {
       Token::Arrow => {
         _ = parser.stream.next();
-        Some(parser.parse::<Type>()?)
+        Some(parser.consume::<Type>()?)
       },
       _ => None,
     };
 
-    let block = parser.parse::<Block>()?;
+    let block = parser.consume::<Block>()?;
 
     Ok(Function {
       identifier,
@@ -211,7 +211,7 @@ impl Parse for Box<[Function]> {
     let mut functions = Vec::new();
 
     while parser.stream.peek(0)? == Token::Function {
-      let function = parser.parse::<Function>()?;
+      let function = parser.consume::<Function>()?;
       functions.push(function);
     }
 

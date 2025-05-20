@@ -31,35 +31,8 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-  /// Constructs a `Parser` by reading from a token stream.
-  pub fn new(stream: TokenStream<'s>) -> Self {
-    Self {
-      stream,
-      peeked: None,
-    }
-  }
-
-  /// Expect a specific token to be next. Throw an error if not.
-  fn expect(&mut self, token: Token) -> Result<()> {
-    let candidate = self.stream.next()?;
-
-    if candidate == token {
-      Ok(())
-    } else {
-      self.unexpected(candidate)
-    }
-  }
-
-  fn unexpected<T>(&self, token: Token) -> Result<T> {
-    self.locate(ParseError::TokenUnexpected(token))
-  }
-
-  fn locate<T>(&self, error: ParseError) -> Result<T> {
-    Err((error, self.stream.last_range()).into())
-  }
-
-  /// Parse a single parsable structure.
-  pub fn parse<T: Parse>(&mut self) -> Result<T> {
+  /// Parse and consume a single parsable structure.
+  pub fn consume<T: Parse>(&mut self) -> Result<T> {
     if let Some(peeked) = self.peeked.take() {
       // Coerce the peeked item into an instance of `Any` so that it can be
       // downcasted below.
@@ -82,6 +55,30 @@ impl<'s> Parser<'s> {
       Ok(peeked)
     } else {
       T::parse(self)
+    }
+  }
+
+  /// Expect a specific token to be next. Throw an error if not.
+  fn expect(&mut self, token: Token) -> Result<()> {
+    let candidate = self.stream.next()?;
+
+    if candidate == token {
+      Ok(())
+    } else {
+      self.unexpected(candidate)
+    }
+  }
+
+  /// Wraps a `parser::Error` in a `weave::Result` with location context.
+  fn locate<T>(&self, error: ParseError) -> Result<T> {
+    Err((error, self.stream.last_range()).into())
+  }
+
+  /// Constructs a `Parser` by reading from a token stream.
+  pub fn new(stream: TokenStream<'s>) -> Self {
+    Self {
+      stream,
+      peeked: None,
     }
   }
 
@@ -122,6 +119,10 @@ impl<'s> Parser<'s> {
       },
     }
   }
+
+  fn unexpected<T>(&self, token: Token) -> Result<T> {
+    self.locate(ParseError::TokenUnexpected(token))
+  }
 }
 
 /// Implements the ability to parse a structure.
@@ -136,7 +137,7 @@ pub trait Parse: Any {
 // in `Box` to avoid cyclic dependencies.
 impl<T: Parse> Parse for Box<T> {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    Ok(Box::new(parser.parse::<T>()?))
+    Ok(Box::new(parser.consume::<T>()?))
   }
 }
 

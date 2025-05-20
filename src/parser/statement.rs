@@ -18,9 +18,9 @@ pub struct Assignment {
 
 impl Parse for Assignment {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let lvalue = parser.parse::<Expression>()?;
-    let operator = parser.parse::<AssignmentOperator>()?;
-    let rvalue = parser.parse::<Expression>()?;
+    let lvalue = parser.consume::<Expression>()?;
+    let operator = parser.consume::<AssignmentOperator>()?;
+    let rvalue = parser.consume::<Expression>()?;
 
     Ok(Assignment {
       lvalue,
@@ -63,12 +63,12 @@ impl Parse for Declaration {
       token => return parser.unexpected(token),
     };
 
-    let variable = parser.parse::<Identifier>()?;
+    let variable = parser.consume::<Identifier>()?;
 
     let typ = match parser.stream.peek(0)? {
       Token::Colon => {
         _ = parser.stream.next();
-        Some(parser.parse::<Type>()?)
+        Some(parser.consume::<Type>()?)
       },
       _ => None,
     };
@@ -76,7 +76,7 @@ impl Parse for Declaration {
     let expression = match parser.stream.peek(0)? {
       Token::Equals => {
         _ = parser.stream.next();
-        Some(parser.parse::<Expression>()?)
+        Some(parser.consume::<Expression>()?)
       },
       _ => None,
     };
@@ -131,13 +131,13 @@ impl Parse for If {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::If)?;
 
-    let condition = parser.parse::<Expression>()?;
-    let block = parser.parse::<Block>()?;
+    let condition = parser.consume::<Expression>()?;
+    let block = parser.consume::<Block>()?;
 
     let otherwise = match parser.stream.peek(0)? {
       Token::Else => {
         _ = parser.stream.next();
-        Some(parser.parse::<Block>()?)
+        Some(parser.consume::<Block>()?)
       },
       _ => None,
     };
@@ -182,11 +182,11 @@ impl Parse for For {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::For)?;
 
-    let variable = parser.parse::<Identifier>()?;
+    let variable = parser.consume::<Identifier>()?;
     parser.expect(Token::In)?;
 
-    let range = parser.parse::<Expression>()?;
-    let block = parser.parse::<Block>()?;
+    let range = parser.consume::<Expression>()?;
+    let block = parser.consume::<Block>()?;
 
     Ok(For {
       variable,
@@ -222,8 +222,8 @@ impl Parse for While {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::While)?;
 
-    let condition = parser.parse::<Expression>()?;
-    let block = parser.parse::<Block>()?;
+    let condition = parser.consume::<Expression>()?;
+    let block = parser.consume::<Block>()?;
 
     Ok(While {
       condition,
@@ -280,7 +280,7 @@ impl Parse for Statement {
       // - "var bar = 2;"
       // - "var bar;"
       Token::Const | Token::Var => {
-        let declaration = parser.parse::<Declaration>()?;
+        let declaration = parser.consume::<Declaration>()?;
         parser.expect(Token::Semicolon)?;
 
         Statement::Declaration(declaration)
@@ -296,12 +296,12 @@ impl Parse for Statement {
 
       // A for loop
       Token::For => {
-        Statement::For(parser.parse::<For>()?)
+        Statement::For(parser.consume::<For>()?)
       },
 
       // An if statement
       Token::If => {
-        Statement::If(parser.parse::<If>()?)
+        Statement::If(parser.consume::<If>()?)
       },
 
       // A return statement
@@ -311,7 +311,7 @@ impl Parse for Statement {
 
         let ret = match parser.stream.peek(0)? {
           Token::Semicolon => None,
-          _ => Some(parser.parse::<Expression>()?),
+          _ => Some(parser.consume::<Expression>()?),
         };
 
         parser.expect(Token::Semicolon)?;
@@ -321,12 +321,12 @@ impl Parse for Statement {
 
       // A while loop
       Token::While => {
-        Statement::While(parser.parse::<While>()?)
+        Statement::While(parser.consume::<While>()?)
       },
 
       // Otherwise, assume it must be an expression.
       _ => {
-        let expression = parser.parse::<Expression>()?;
+        let expression = parser.consume::<Expression>()?;
 
         let statement = match parser.stream.peek(0)? {
           // Check for an assignment operator.
@@ -341,8 +341,8 @@ impl Parse for Statement {
           | Token::PipeEquals
           | Token::PlusEquals
           | Token::SlashEquals => {
-            let operator = parser.parse::<AssignmentOperator>()?;
-            let rvalue = parser.parse::<Expression>()?;
+            let operator = parser.consume::<AssignmentOperator>()?;
+            let rvalue = parser.consume::<Expression>()?;
 
             Statement::Assignment(Assignment {
               lvalue: expression,
@@ -420,7 +420,7 @@ impl Parse for Box<[Statement]> {
         | Token::While,
       )
     } {
-      statements.push(parser.parse::<Statement>()?);
+      statements.push(parser.consume::<Statement>()?);
     }
 
     Ok(statements.into_boxed_slice())
@@ -447,7 +447,7 @@ pub struct Block {
 impl Parse for Block {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::BraceLeft)?;
-    let statements = parser.parse::<Box<[Statement]>>()?;
+    let statements = parser.consume::<Box<[Statement]>>()?;
     parser.expect(Token::BraceRight)?;
 
     Ok(Self { statements })

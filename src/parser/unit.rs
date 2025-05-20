@@ -15,8 +15,8 @@ pub struct Unit {
 
 impl Parse for Unit {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let imports = parser.parse::<Box<[Import]>>()?;
-    let functions = parser.parse::<Box<[Function]>>()?;
+    let imports = parser.consume::<Box<[Import]>>()?;
+    let functions = parser.consume::<Box<[Function]>>()?;
 
     parser.expect(Token::EOF)?;
 

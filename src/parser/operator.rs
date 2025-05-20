@@ -408,7 +408,7 @@ impl Parse for PostfixOperator {
       Token::BracketLeft => {
         _ = parser.stream.next();
 
-        let expression = parser.parse::<Box<Expression>>()?;
+        let expression = parser.consume::<Box<Expression>>()?;
         parser.expect(Token::BracketRight)?;
 
         Self::Index { expression }
@@ -417,11 +417,11 @@ impl Parse for PostfixOperator {
         _ = parser.stream.next();
 
         let mut members = Vec::new();
-        members.push(parser.parse::<Identifier>()?);
+        members.push(parser.consume::<Identifier>()?);
 
         while parser.stream.peek(0)? == Token::Dot {
           _ = parser.stream.next();
-          members.push(parser.parse::<Identifier>()?);
+          members.push(parser.consume::<Identifier>()?);
         }
 
         Self::Path {
@@ -432,14 +432,14 @@ impl Parse for PostfixOperator {
         _ = parser.stream.next();
 
         Self::Scope {
-          right: parser.parse::<Box<Expression>>()?,
+          right: parser.consume::<Box<Expression>>()?,
         }
       },
       Token::MinusMinus => Self::Decrement,
       Token::ParenthesisLeft => {
         _ = parser.stream.next();
 
-        let arguments = parser.parse::<Box<[Argument]>>()?;
+        let arguments = parser.consume::<Box<[Argument]>>()?;
         parser.expect(Token::ParenthesisRight)?;
 
         Self::Call { arguments }

@@ -37,7 +37,7 @@ impl Parse for Array {
     }
 
     loop {
-      elements.push(parser.parse::<Expression>()?);
+      elements.push(parser.consume::<Expression>()?);
 
       match parser.stream.next()? {
         Token::BracketRight => break,
@@ -89,7 +89,7 @@ impl Parse for Tuple {
       }
 
       // Parse the element expression.
-      let element = parser.parse::<Expression>()?;
+      let element = parser.consume::<Expression>()?;
       elements.push(element);
 
       match parser.stream.next()? {
@@ -132,11 +132,11 @@ pub struct ClosureParameter {
 
 impl Parse for ClosureParameter {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let identifier = parser.parse::<Identifier>()?;
+    let identifier = parser.consume::<Identifier>()?;
 
     let typ = if parser.stream.peek(0)? == Token::Colon {
       _ = parser.stream.next();
-      Some(parser.parse::<Type>()?)
+      Some(parser.consume::<Type>()?)
     } else {
       None
     };
@@ -172,7 +172,7 @@ impl Parse for Box<[ClosureParameter]> {
 
     loop {
       // Parse the next parameter.
-      parameters.push(parser.parse::<ClosureParameter>()?);
+      parameters.push(parser.consume::<ClosureParameter>()?);
 
       // Parse the next parameter if a comma is reached.
       // Stop upon reaching a right parenthesis.
@@ -209,11 +209,11 @@ pub enum ClosureBody {
 impl Parse for ClosureBody {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let body = match parser.stream.peek(0)? {
-      Token::BraceLeft => Self::Block(parser.parse::<Block>()?),
+      Token::BraceLeft => Self::Block(parser.consume::<Block>()?),
 
       // TODO: Consider matching against the FIRST set of `Expression` instead
       // of redirecting all other tokens there, for better error messages.
-      _ => Self::Expression(Box::new(parser.parse::<Expression>()?)),
+      _ => Self::Expression(Box::new(parser.consume::<Expression>()?)),
     };
 
     Ok(body)
@@ -242,11 +242,11 @@ pub struct Closure {
 impl Parse for Closure {
   fn parse(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::ParenthesisLeft)?;
-    let parameters = parser.parse::<Box<[ClosureParameter]>>()?;
+    let parameters = parser.consume::<Box<[ClosureParameter]>>()?;
     parser.expect(Token::ParenthesisRight)?;
     parser.expect(Token::Arrow)?;
 
-    let body = parser.parse::<ClosureBody>()?;
+    let body = parser.consume::<ClosureBody>()?;
 
     Ok(Self {
       parameters,
@@ -398,12 +398,12 @@ impl Expression {
     let mut expression = match parser.stream.peek(0)? {
       // Arrays.
       Token::BracketLeft => {
-        Expression::Array(parser.parse::<Array>()?)
+        Expression::Array(parser.consume::<Array>()?)
       },
 
       // Identifiers.
       Token::Identifier(_) => {
-        Expression::Identifier(parser.parse::<Identifier>()?)
+        Expression::Identifier(parser.consume::<Identifier>()?)
       },
 
       // Enclosed expression, closure, or tuple.
@@ -474,10 +474,10 @@ impl Expression {
         // If the next token is an arrow, the expression must be a closure.
         // `t` is pre-incremented, so it's the index of the next token.
         if parser.stream.peek(t)? == Token::Arrow {
-          Self::Closure(parser.parse::<Closure>()?)
+          Self::Closure(parser.consume::<Closure>()?)
         } else if comma_separated || t == 2 {
           // If there are comma separators or it's empty, then it's a tuple.
-          Self::Tuple(parser.parse::<Tuple>()?)
+          Self::Tuple(parser.consume::<Tuple>()?)
         } else {
           // Otherwise, it must be an inner expression.
 
@@ -485,7 +485,7 @@ impl Expression {
           _ = parser.stream.next();
 
           // Parse the inner expression.
-          let inner = parser.parse::<Expression>()?;
+          let inner = parser.consume::<Expression>()?;
 
           // Check that it's capped by a right parenthesis.
           //
@@ -503,7 +503,7 @@ impl Expression {
       | Token::Float(_)
       | Token::Integer(_)
       | Token::String(_) => {
-        Expression::Literal(parser.parse::<Literal>()?)
+        Expression::Literal(parser.consume::<Literal>()?)
       },
 
       // Prefix operators.
@@ -515,8 +515,8 @@ impl Expression {
       | Token::Plus
       | Token::PlusPlus
       | Token::Tilde => {
-        let operator = parser.parse::<PrefixOperator>()?;
-        let inner = parser.parse::<Expression>()?;
+        let operator = parser.consume::<PrefixOperator>()?;
+        let inner = parser.consume::<Expression>()?;
 
         Expression::Prefix {
           operator,
@@ -536,7 +536,7 @@ impl Expression {
       | Token::MinusMinus
       | Token::ParenthesisLeft
       | Token::PlusPlus => {
-        let operator = parser.parse::<PostfixOperator>()?;
+        let operator = parser.consume::<PostfixOperator>()?;
 
         expression = Expression::Postfix {
           inner: Box::new(expression),
@@ -569,7 +569,7 @@ impl Expression {
 
       // Otherwise, consume the operator and parse the right expression as a
       // sub-expression in the binary operation.
-      let operator = parser.parse::<BinaryOperator>()?;
+      let operator = parser.consume::<BinaryOperator>()?;
       let right = Expression::parse_with_power(parser, right_power)?;
 
       expression = Expression::Binary {

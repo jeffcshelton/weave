@@ -42,7 +42,7 @@ fn delegate() -> Result<()> {
     Command::Expr { path } => {
       let mut lexer = Lexer::from_path(&path)?;
       let mut parser = Parser::new(lexer.stream());
-      let expr = parser.parse::<Expression>()?;
+      let expr = parser.consume::<Expression>()?;
 
       println!("{}", expr.parenthesized().tokens());
     },
@@ -68,7 +68,7 @@ fn delegate() -> Result<()> {
         lexer.load(path)?;
 
         let mut parser = Parser::new(lexer.stream());
-        let unit = parser.parse::<Unit>()?;
+        let unit = parser.consume::<Unit>()?;
 
         println!("--- \x1b[1m{path}\x1b[0m ---");
         println!("{unit:#?}");
