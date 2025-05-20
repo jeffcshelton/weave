@@ -1,6 +1,6 @@
 //! Components related to reading and storing source files.
 
-use crate::{Result, lexer::LexError};
+use crate::{Result, lexer::Error};
 use std::{cmp::Ordering, fmt::{self, Display, Formatter}, fs::File, io::Read, sync::Arc};
 
 /// Represents a UTF-8 source code file that has been read.
@@ -221,9 +221,9 @@ impl<'s> SourceIterator<'s> {
     self.point.clone()
   }
 
-  /// Gives a `LexError` position information and returns it as a
+  /// Gives a `lexer::Error` position information and returns it as a
   /// `weave::Result`.
-  pub fn locate<T>(&self, error: LexError) -> Result<T> {
+  pub fn locate<T>(&self, error: Error) -> Result<T> {
     Err((error, self.point.clone()).into())
   }
 }

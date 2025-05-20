@@ -45,7 +45,7 @@ impl<'s> Parser<'s> {
       let peeked = match any.downcast::<T>() {
         Ok(inner) => *inner,
         Err(actual) => {
-          return self.locate(ParseError::TypeMismatch {
+          return self.locate(Error::TypeMismatch {
             actual: actual.type_id(),
             expected: TypeId::of::<T>(),
           });
@@ -70,7 +70,7 @@ impl<'s> Parser<'s> {
   }
 
   /// Wraps a `parser::Error` in a `weave::Result` with location context.
-  fn locate<T>(&self, error: ParseError) -> Result<T> {
+  fn locate<T>(&self, error: Error) -> Result<T> {
     Err((error, self.stream.last_range()).into())
   }
 
@@ -112,7 +112,7 @@ impl<'s> Parser<'s> {
     match any.downcast_ref() {
       Some(inner) => Ok(inner),
       None => {
-        return self.locate(ParseError::TypeMismatch {
+        return self.locate(Error::TypeMismatch {
           actual: any.type_id(),
           expected: TypeId::of::<T>(),
         })
@@ -121,7 +121,7 @@ impl<'s> Parser<'s> {
   }
 
   fn unexpected<T>(&self, token: Token) -> Result<T> {
-    self.locate(ParseError::TokenUnexpected(token))
+    self.locate(Error::TokenUnexpected(token))
   }
 }
 
@@ -168,7 +168,7 @@ impl Display for Identifier {
 
 /// An error that can occur while parsing the AST.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum ParseError {
+pub enum Error {
   /// A static array length is negative.
   ArrayLengthNegative(BigInt),
 
@@ -192,7 +192,7 @@ pub enum ParseError {
   },
 }
 
-impl Display for ParseError {
+impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
       Self::ArrayLengthNegative(length) => {
@@ -208,4 +208,4 @@ impl Display for ParseError {
   }
 }
 
-impl std::error::Error for ParseError {}
+impl std::error::Error for Error {}

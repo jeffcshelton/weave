@@ -2,7 +2,7 @@
 
 use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use num::{BigInt, Signed};
-use super::{Expression, Parse, ParseError, Parser};
+use super::{Error, Expression, Parse, Parser};
 
 /// An expression producing a type when evaluated.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -42,7 +42,7 @@ impl Parse for Type {
           let length = match parser.stream.peek(0)? {
             Token::Integer(int) => {
               if int.is_negative() {
-                return parser.locate(ParseError::ArrayLengthNegative(int));
+                return parser.locate(Error::ArrayLengthNegative(int));
               }
 
               _ = parser.stream.next();

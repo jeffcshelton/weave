@@ -37,7 +37,7 @@ macro_rules! consume {
         $stream.next();
         consume!(priv $base, $stream, $default; $({ $($tail)* })?)
       },)*
-      _ => return $stream.locate(LexError::TokenInvalid),
+      _ => return $stream.locate(Error::TokenInvalid),
     }
   };
 }
@@ -105,7 +105,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if word.len() == 0 {
-      return self.stream.locate(LexError::TokenEmpty);
+      return self.stream.locate(Error::TokenEmpty);
     }
 
     // Check for keyword matches.
@@ -192,10 +192,10 @@ impl<'s> TokenStream<'s> {
           'b' => 2,
           'o' => 8,
           'x' => 16,
-          c => return self.stream.locate(LexError::BaseUnrecognized(c))
+          c => return self.stream.locate(Error::BaseUnrecognized(c))
         };
       } else {
-        return self.stream.locate(LexError::NumberCharacter(c));
+        return self.stream.locate(Error::NumberCharacter(c));
       }
 
       // Increment the loop counter for the base specifier.
@@ -205,7 +205,7 @@ impl<'s> TokenStream<'s> {
 
     // Empty tokens are an internal error. This should never run.
     if i == 0 {
-      return self.stream.locate(LexError::TokenEmpty);
+      return self.stream.locate(Error::TokenEmpty);
     }
 
     // Pass back either an integer for float depending on whether a dot was
@@ -319,7 +319,7 @@ impl<'s> TokenStream<'s> {
     if closed {
       Ok(Token::String(content.into_boxed_str()))
     } else {
-      self.stream.locate(LexError::LiteralNotClosed)
+      self.stream.locate(Error::LiteralNotClosed)
     }
   }
 
@@ -328,22 +328,22 @@ impl<'s> TokenStream<'s> {
     self.stream.next();
 
     let Some(c) = self.stream.next() else {
-      return self.stream.locate(LexError::LiteralNotClosed);
+      return self.stream.locate(Error::LiteralNotClosed);
     };
 
     let c = match c {
       '\\' => self.scan_escape()?,
       '\n' | '\r' => {
-        return self.stream.locate(LexError::LiteralNotClosed);
+        return self.stream.locate(Error::LiteralNotClosed);
       },
       '\'' => {
-        return self.stream.locate(LexError::CharacterEmpty);
+        return self.stream.locate(Error::CharacterEmpty);
       },
       c => c,
     };
 
     if self.stream.next() != Some('\'') {
-      return self.stream.locate(LexError::LiteralNotClosed);
+      return self.stream.locate(Error::LiteralNotClosed);
     }
 
     Ok(Token::Character(c))
@@ -351,7 +351,7 @@ impl<'s> TokenStream<'s> {
 
   fn scan_escape(&mut self) -> Result<char> {
     let Some(escape) = self.stream.next() else {
-      return self.stream.locate(LexError::LiteralNotClosed);
+      return self.stream.locate(Error::LiteralNotClosed);
     };
 
     let c = match escape {
@@ -390,7 +390,7 @@ impl<'s> TokenStream<'s> {
 
       // Invalid escape sequence
       escape => {
-        return self.stream.locate(LexError::EscapeInvalid(escape));
+        return self.stream.locate(Error::EscapeInvalid(escape));
       },
     };
 
@@ -518,7 +518,7 @@ impl Lexer {
 
 /// An error that can occur while lexing tokens.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum LexError {
+pub enum Error {
   /// The base specifier of a number is unrecognized (`0b`, `0o`, or `0x`).
   BaseUnrecognized(char),
 
@@ -543,7 +543,7 @@ pub enum LexError {
   TokenInvalid,
 }
 
-impl Display for LexError {
+impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
       Self::BaseUnrecognized(c) => {
@@ -571,4 +571,4 @@ impl Display for LexError {
   }
 }
 
-impl std::error::Error for LexError {}
+impl std::error::Error for Error {}
