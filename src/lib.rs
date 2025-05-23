@@ -3,6 +3,7 @@
 //! The compiler library for the Weave programming language.
 
 pub mod error;
+pub mod jit;
 pub mod lexer;
 pub mod parser;
 pub mod source;

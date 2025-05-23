@@ -1,7 +1,7 @@
 //! Components related to reading and storing source files.
 
 use crate::{Result, lexer::Error};
-use std::{cmp::Ordering, fmt::{self, Display, Formatter}, fs::File, io::Read, sync::Arc};
+use std::{cmp::Ordering, ffi::OsStr, fmt::{self, Display, Formatter}, fs::File, io::Read, path::Path, sync::Arc};
 
 /// Represents a UTF-8 source code file that has been read.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -9,7 +9,7 @@ pub struct Source {
   /// The shared name of the source file.
   ///
   /// This is not guaranteed here to be unique across all sources.
-  pub name: Arc<str>,
+  pub name: Arc<OsStr>,
 
   /// The shared contents of the source file.
   pub contents: Arc<[char]>,
@@ -19,13 +19,13 @@ impl Source {
   /// Constructs a `Source` with the name "<empty>" and no contents.
   pub fn empty() -> Self {
     Self {
-      name: Arc::from("<empty>"),
+      name: Arc::from("<empty>".as_ref()),
       contents: Arc::new([]),
     }
   }
 
   /// Constructs a `Source` by reading from a reader.
-  pub fn read(name: &str, mut reader: impl Read) -> Result<Self> {
+  pub fn read(name: impl AsRef<OsStr>, mut reader: impl Read) -> Result<Self> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
     Ok(Self::from_str(name, &contents))
@@ -33,20 +33,22 @@ impl Source {
 
   /// Constructs a `Source` by reading from the given path.
   /// The name of the source will be the path.
-  pub fn read_path(path: &str) -> Result<Self> {
+  pub fn read_path(path: impl AsRef<Path>) -> Result<Self> {
+    let path = path.as_ref();
     let file = File::open(path)?;
+
     Self::read(path, file)
   }
 
   /// Constructs a `Source` by parsing a UTF-8 string.
-  pub fn from_str(name: &str, string: &str) -> Self {
+  pub fn from_str(name: impl AsRef<OsStr>, string: &str) -> Self {
     let contents = string
       .chars()
       .collect::<Vec<char>>()
       .into_boxed_slice();
 
     Self {
-      name: Arc::from(name),
+      name: Arc::from(name.as_ref()),
       contents: Arc::from(contents),
     }
   }

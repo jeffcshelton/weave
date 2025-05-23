@@ -4,7 +4,7 @@ pub mod token;
 
 use crate::{source::{Point, Source, SourceIterator}, Result};
 use num::{BigInt, BigRational, One};
-use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range};
+use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range, path::Path};
 use token::Token;
 
 macro_rules! consume {
@@ -493,7 +493,7 @@ pub struct Lexer {
 
 impl Lexer {
   /// Constructs a new `Lexer` by reading from a file path.
-  pub fn from_path(path: &str) -> Result<Self> {
+  pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
     let mut lexer = Self::empty();
     lexer.load(path)?;
     Ok(lexer)
@@ -505,7 +505,7 @@ impl Lexer {
   }
 
   /// Loads a new source file into the lexer.
-  pub fn load(&mut self, path: &str) -> Result<()> {
+  pub fn load(&mut self, path: impl AsRef<Path>) -> Result<()> {
     self.source = Source::read_path(path)?;
     Ok(())
   }

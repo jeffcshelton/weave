@@ -3,11 +3,7 @@
 use clap::{Parser as CommandParser, Subcommand};
 use std::process;
 use weave::{
-  lexer::token::Tokenize,
-  parser::{Expression, Unit},
-  Lexer,
-  Parser,
-  Result,
+  jit::JIT, lexer::token::Tokenize, parser::{Expression, Unit}, Lexer, Parser, Result
 };
 
 #[derive(Clone, Debug, Subcommand)]
@@ -19,6 +15,7 @@ enum Command {
   Parse {
     paths: Vec<String>,
   },
+  Run { path: String },
 }
 
 #[derive(Clone, CommandParser, Debug)]
@@ -74,6 +71,9 @@ fn delegate() -> Result<()> {
         println!("{unit:#?}");
         println!();
       }
+    },
+    Command::Run { path } => {
+      JIT::run(path)?;
     },
   }
 
