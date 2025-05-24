@@ -127,8 +127,8 @@ pub enum Token {
   /// `!=`
   ExclamationEquals,
 
-  /// `extern`
-  Extern,
+  /// `extension`
+  Extension,
 
   /// `false`
   False,
@@ -188,6 +188,12 @@ pub enum Token {
 
   /// `++`
   PlusPlus,
+
+  /// `private`
+  Private,
+
+  /// `public`
+  Public,
 
   /// `return`
   Return,
@@ -272,7 +278,7 @@ impl Display for Token {
       Self::Equals => write!(f, "="),
       Self::Exclamation => write!(f, "!"),
       Self::ExclamationEquals => write!(f, "!="),
-      Self::Extern => write!(f, "extern"),
+      Self::Extension => write!(f, "extension"),
       Self::False => write!(f, "false"),
       Self::Float(float) => write!(f, "{float}"),
       Self::For => write!(f, "for"),
@@ -292,6 +298,8 @@ impl Display for Token {
       Self::Plus => write!(f, "+"),
       Self::PlusEquals => write!(f, "+="),
       Self::PlusPlus => write!(f, "++"),
+      Self::Private => write!(f, "private"),
+      Self::Public => write!(f, "public"),
       Self::Return => write!(f, "return"),
       Self::Self_ => write!(f, "self"),
       Self::Semicolon => write!(f, ";"),
@@ -429,11 +437,13 @@ impl TokenWriter for Formatter<'_> {
       | Token::Comma
       | Token::Const
       | Token::Enum
-      | Token::Extern
+      | Token::Extension
       | Token::For
       | Token::Function
       | Token::If
       | Token::Import
+      | Token::Private
+      | Token::Public
       | Token::Return
       | Token::Semicolon
       | Token::Struct

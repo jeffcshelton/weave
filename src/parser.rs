@@ -1,16 +1,24 @@
 //! Components related to parsing a Weave abstract syntax tree (AST).
 
+pub mod class;
+pub mod enumeration;
 pub mod expression;
 pub mod function;
+pub mod global;
 pub mod import;
+pub mod modifier;
 pub mod operator;
 pub mod statement;
 pub mod types;
 pub mod unit;
 
+pub use class::*;
+pub use enumeration::*;
 pub use expression::*;
 pub use function::*;
+pub use global::*;
 pub use import::*;
+pub use modifier::*;
 pub use operator::*;
 pub use statement::*;
 pub use types::*;
@@ -69,6 +77,39 @@ impl<'s> Parser<'s> {
     }
   }
 
+  fn joined<T: Parse>(&mut self, delimiter: Token, stop: Token) -> Result<Box<[T]>> {
+    // Special case for an empty set.
+    if self.stream.peek(0)? == stop {
+      return Ok(Box::new([]));
+    }
+
+    let mut items = Vec::new();
+
+    // Parse and push items until the stop token is reached.
+    // Crucially, stop right before the stop token. The caller consumes that.
+    loop {
+      items.push(self.consume::<T>()?);
+
+      let next = self.stream.peek(0)?;
+
+      // Check for the stop token. If not the stop token, it should be the
+      // delimiter token. Continue iterating on a delimiter token.
+      //
+      // Ordinarily, this would be done with a match statement, but it cannot be
+      // here since the tokens are passed as arguments.
+      if next == stop {
+        break;
+      } else if next != delimiter {
+        return self.unexpected(next);
+      }
+
+      // Advance past the delimiter token.
+      self.stream.advance(1);
+    }
+
+    Ok(items.into_boxed_slice())
+  }
+
   /// Wraps a `parser::Error` in a `weave::Result` with location context.
   fn locate<T>(&self, error: Error) -> Result<T> {
     Err((error, self.stream.last_range()).into())
@@ -81,6 +122,17 @@ impl<'s> Parser<'s> {
       peeked: None,
     }
   }
+
+  // fn commit(&mut self) {
+  //   self.stream.advance(self.lookahead);
+  //   self.lookahead = 0;
+  // }
+  //
+  // pub fn next(&mut self) -> Result<Token> {
+  //   let peeked = self.stream.peek(self.lookahead)?;
+  //   self.lookahead += 1;
+  //   Ok(peeked)
+  // }
 
   /// Peeks the next item that can be parsed without consuming it.
   ///
@@ -127,6 +179,8 @@ impl<'s> Parser<'s> {
 
 /// Implements the ability to parse a structure.
 pub trait Parse: Any {
+  fn description() -> &'static str where Self: Sized { "<unknown>" }
+
   /// Parse an instance of the type using a pre-constructed parser.
   fn parse(parser: &mut Parser) -> Result<Self> where Self: Sized;
 }
@@ -136,6 +190,10 @@ pub trait Parse: Any {
 // This is just for convenience, as often parsed nonterminals must be wrapped
 // in `Box` to avoid cyclic dependencies.
 impl<T: Parse> Parse for Box<T> {
+  fn description() -> &'static str {
+    T::description()
+  }
+
   fn parse(parser: &mut Parser) -> Result<Self> {
     Ok(Box::new(parser.consume::<T>()?))
   }
@@ -146,9 +204,14 @@ impl<T: Parse> Parse for Box<T> {
 pub struct Identifier(Box<str>);
 
 impl Parse for Identifier {
+  fn description() -> &'static str {
+    "identifier"
+  }
+
   fn parse(parser: &mut Parser) -> Result<Self> {
     match parser.stream.next()? {
       Token::Identifier(name) => Ok(Self(name)),
+      Token::Self_ => Ok(Self(Box::from("self"))),
       token => parser.unexpected(token),
     }
   }
@@ -169,8 +232,8 @@ impl Display for Identifier {
 /// An error that can occur while parsing the AST.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Error {
-  /// A static array length is negative.
-  ArrayLengthNegative(BigInt),
+  /// A static array length is negative or zero.
+  ArrayLengthInvalid(BigInt),
 
   /// An ordering mismatch has occurred between different types of brackets.
   BracketMismatch,
@@ -190,19 +253,31 @@ pub enum Error {
     /// The ID of the expected type in the generic.
     expected: TypeId,
   },
+
+  /// A visibility modifier is not present where required.
+  VisibilityMissing,
 }
 
 impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
-      Self::ArrayLengthNegative(length) => {
-        write!(f, "negative array length: {length}")
+      Self::ArrayLengthInvalid(length) => {
+        write!(f, "invalid array length: {length}")
       },
-      Self::BracketMismatch => write!(f, "mismatching brackets"),
-      Self::CommaTrailing => write!(f, "trailing comma unexpected"),
-      Self::TokenUnexpected(token) => write!(f, "unexpected token: {token}"),
+      Self::BracketMismatch => {
+        write!(f, "mismatching brackets")
+      },
+      Self::CommaTrailing => {
+        write!(f, "trailing comma unexpected")
+      },
+      Self::TokenUnexpected(token) => {
+        write!(f, "unexpected token: {token}")
+      },
       Self::TypeMismatch { actual, expected } => {
         write!(f, "expected type {expected:?}, got {actual:?} (internal)")
+      },
+      Self::VisibilityMissing => {
+        write!(f, "missing visibility modifier")
       },
     }
   }

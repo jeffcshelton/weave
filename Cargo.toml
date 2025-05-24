@@ -9,4 +9,5 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5.37", features = ["derive"] }
+cranelift = { version = "0.120.0", features = ["jit", "module", "native"] }
 num = "0.4.3"

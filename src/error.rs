@@ -4,7 +4,7 @@ use crate::{jit, lexer, parser, source::Point};
 use std::{fmt::{self, Display, Formatter}, io, ops::Range, sync::Arc};
 
 /// Any error that can be produced by Weave.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Error {
   /// Error originating from a formatting operation.
   /// Wraps a `std::fmt::Error`.

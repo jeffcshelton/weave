@@ -1,19 +1,59 @@
 //! Just-in-time compilation.
 
-use crate::{parser::{Function, Import, Unit}, Lexer, Parser, Result};
-use std::{collections::HashSet, fmt::{self, Display, Formatter}, path::Path};
+use cranelift::{
+  codegen::{self, CodegenError},
+  jit::{JITBuilder, JITModule},
+  module::{default_libcall_names, Module},
+  prelude::{
+    settings::{Flags as ISAFlags, SetError}, AbiParam, Configurable
+  },
+};
+
+use crate::{
+  parser::{Class, Function, Global, Import, Struct, Unit},
+  Lexer,
+  Parser,
+  Result,
+};
+
+use std::{
+  collections::HashSet,
+  fmt::{self, Display, Formatter},
+  path::Path,
+};
 
 /// The just-in-time compilation runtime.
-#[derive(Clone, Debug, Default)]
 pub struct JIT {
+  context: codegen::Context,
+
   /// Set of all absolute paths of all imports in the source tree.
   /// This is recorded and checked to avoid double imports.
   imports: HashSet<Box<Path>>,
+
+  module: JITModule,
 }
 
 impl JIT {
+  /// Adds a class definition to the source tree.
+  pub fn add_class(&mut self, _class: Class) -> Result<()> {
+    Ok(())
+  }
+
   /// Adds a function to the JIT source tree.
-  pub fn add_function(&mut self, _function: Function) -> Result<()> {
+  pub fn add_function(&mut self, function: Function) -> Result<()> {
+    let Function { parameters, .. } = function;
+
+    let int = self.module.target_config().pointer_type();
+
+    for _param in parameters {
+      self.context.func.signature.params.push(AbiParam::new(int));
+    }
+
+    Ok(())
+  }
+
+  /// Adds a declaration of a global variable to the JIT source tree.
+  pub fn add_global(&mut self, _global: Global) -> Result<()> {
     Ok(())
   }
 
@@ -60,14 +100,23 @@ impl JIT {
     Ok(())
   }
 
+  /// Adds a struct definition to the JIT source tree.
+  pub fn add_struct(&mut self, _struct_: Struct) -> Result<()> {
+    Ok(())
+  }
+
   /// Adds a compilation unit to the JIT runtime.
   pub fn add_unit(&mut self, unit: Unit, path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
-    let Unit { functions, imports } = unit;
-
-    for function in functions {
-      self.add_function(function)?;
-    }
+    let Unit {
+      classes,
+      enums,
+      extensions,
+      functions,
+      globals,
+      imports,
+      structs,
+    } = unit;
 
     // SAFETY: This unwrap is safe because if the path here is being passed in
     // with the unit, then it must have already been read to produce the `Unit`.
@@ -84,12 +133,28 @@ impl JIT {
       self.add_import(import, base)?;
     }
 
+    for struct_ in structs {
+      self.add_struct(struct_)?;
+    }
+
+    for class in classes {
+      self.add_class(class)?;
+    }
+
+    for global in globals {
+      self.add_global(global)?;
+    }
+
+    for function in functions {
+      self.add_function(function)?;
+    }
+
     Ok(())
   }
 
   /// Runs a single source file, including its imports, starting at the main
   /// function.
-  pub fn run(path: impl AsRef<Path>) -> Result<()> {
+  pub fn run(path: impl AsRef<Path>) -> crate::Result<()> {
     let path = path.as_ref();
 
     // Lex and parse the base compilation unit.
@@ -98,10 +163,36 @@ impl JIT {
     let unit = parser.consume::<Unit>()?;
 
     // Add the base compilation unit to the JIT runtime.
-    let mut jit = JIT::default();
+    let mut jit = JIT::new()?;
     jit.add_unit(unit, path)?;
 
     Ok(())
+  }
+
+  /// Constructs a new `JIT` runtime with the default settings.
+  pub fn new() -> Result<Self> {
+    // This inner function is not just for compartmentalization.
+    // It simplifies error handling code.
+    fn build_module() -> std::result::Result<JITModule, Error> {
+      let mut flags = cranelift::prelude::settings::builder();
+      flags.set("use_colocated_libcalls", "false")?;
+      flags.set("is_pic", "false")?;
+
+      let isa = cranelift::native::builder()
+        .map_err(|_| Error::PlatformUnsupported)?
+        .finish(ISAFlags::new(flags))?;
+
+      let builder = JITBuilder::with_isa(isa, default_libcall_names());
+      Ok(JITModule::new(builder))
+    }
+
+    let module = build_module()?;
+
+    Ok(Self {
+      context: module.make_context(),
+      imports: HashSet::new(),
+      module,
+    })
   }
 }
 
@@ -315,8 +406,14 @@ impl Display for Language {
 }
 
 /// An error originating from or relating to the JIT runtime.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Debug)]
 pub enum Error {
+  /// A Cranelift codegen operation failed.
+  CraneliftCodegen(CodegenError),
+
+  /// A Cranelift setting was set improperly (internal).
+  CraneliftSetting(SetError),
+
   /// The file type is incompatible with the pre-determined language.
   FileTypeIncompatible(FileType, Language),
 
@@ -328,11 +425,20 @@ pub enum Error {
 
   /// The language detected in an import is unsupported for integration.
   LanguageUnsupported(Language),
+
+  /// The current machine's architecture is not supported.
+  PlatformUnsupported,
 }
 
 impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
+      Self::CraneliftCodegen(error) => {
+        write!(f, "Cranelift codegen: {error}")
+      },
+      Self::CraneliftSetting(error) => {
+        write!(f, "[internal] invalid Cranelift setting: {error}")
+      },
       Self::FileTypeIncompatible(file_type, language) => {
         write!(f, "file type '{file_type}' is incompatible with '{language}'")
       },
@@ -345,8 +451,23 @@ impl Display for Error {
       Self::LanguageUnsupported(language) => {
         write!(f, "unsupported language {language}")
       },
+      Self::PlatformUnsupported => {
+        write!(f, "unsupported platform")
+      },
     }
   }
 }
 
 impl std::error::Error for Error {}
+
+impl From<CodegenError> for Error {
+  fn from(error: CodegenError) -> Self {
+    Self::CraneliftCodegen(error)
+  }
+}
+
+impl From<SetError> for Error {
+  fn from(error: SetError) -> Self {
+    Self::CraneliftSetting(error)
+  }
+}

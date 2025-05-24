@@ -1,7 +1,7 @@
 //! Function components of the AST.
 
 use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
-use super::{Block, Expression, Identifier, Parse, Parser, Type};
+use super::{Block, Expression, Identifier, Parse, Parser, Type, Visibility};
 
 /// A concrete argument passed to a function or closure.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -80,6 +80,9 @@ impl Tokenize for Box<[Argument]> {
 /// A function parameter.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionParameter {
+  /// The label identifier of the parameter that is required at the call site.
+  pub label: Option<Identifier>,
+
   /// The variable identifier of the parameter.
   pub identifier: Identifier,
 
@@ -89,12 +92,22 @@ pub struct FunctionParameter {
 
 impl Parse for FunctionParameter {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let identifier = parser.consume::<Identifier>()?;
-    parser.expect(Token::Colon)?;
+    let mut label = None;
+    let mut identifier = parser.consume::<Identifier>()?;
 
+    // If there is a second identifier, then the first one must have been the
+    // label. Set the label and then parse the peeked token as the actual
+    // identifier.
+    if matches!(parser.stream.peek(0)?, Token::Identifier(_)) {
+      label = Some(identifier);
+      identifier = parser.consume::<Identifier>()?;
+    };
+
+    parser.expect(Token::Colon)?;
     let typ = parser.consume::<Type>()?;
 
     Ok(FunctionParameter {
+      label,
       identifier,
       typ,
     })
@@ -137,7 +150,7 @@ impl Parse for Box<[FunctionParameter]> {
   }
 }
 
-impl Tokenize for Box<[FunctionParameter]> {
+impl Tokenize for [FunctionParameter] {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     writer.join(self, Token::Comma)
   }
@@ -146,6 +159,9 @@ impl Tokenize for Box<[FunctionParameter]> {
 /// A function declaration.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Function {
+  /// The visibility of the function to outside callers.
+  pub visibility: Visibility,
+
   /// The identifier by which the function may be called.
   pub identifier: Identifier,
 
@@ -161,10 +177,9 @@ pub struct Function {
 
 impl Parse for Function {
   fn parse(parser: &mut Parser) -> Result<Self> {
+    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Function)?;
-
     let identifier = parser.consume::<Identifier>()?;
-
     parser.expect(Token::ParenthesisLeft)?;
     let parameters = parser.consume::<Box<[FunctionParameter]>>()?;
     parser.expect(Token::ParenthesisRight)?;
@@ -180,6 +195,7 @@ impl Parse for Function {
     let block = parser.consume::<Block>()?;
 
     Ok(Function {
+      visibility,
       identifier,
       parameters,
       return_type,
@@ -190,10 +206,11 @@ impl Parse for Function {
 
 impl Tokenize for Function {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
+    writer.write(&self.visibility)?;
     writer.write_one(Token::Function)?;
     writer.write(&self.identifier)?;
     writer.write_one(Token::ParenthesisLeft)?;
-    writer.write(&self.parameters)?;
+    writer.write(&*self.parameters)?;
     writer.write_one(Token::ParenthesisRight)?;
 
     if let Some(return_type) = &self.return_type {
@@ -205,21 +222,21 @@ impl Tokenize for Function {
     Ok(())
   }
 }
+//
+// impl Parse for Box<[Function]> {
+//   fn parse(parser: &mut Parser) -> Result<Self> {
+//     let mut functions = Vec::new();
+//
+//     while parser.stream.peek(0)? == Token::Function {
+//       let function = parser.consume::<Function>()?;
+//       functions.push(function);
+//     }
+//
+//     Ok(functions.into_boxed_slice())
+//   }
+// }
 
-impl Parse for Box<[Function]> {
-  fn parse(parser: &mut Parser) -> Result<Self> {
-    let mut functions = Vec::new();
-
-    while parser.stream.peek(0)? == Token::Function {
-      let function = parser.consume::<Function>()?;
-      functions.push(function);
-    }
-
-    Ok(functions.into_boxed_slice())
-  }
-}
-
-impl Tokenize for Box<[Function]> {
+impl Tokenize for [Function] {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     for function in self {
       writer.write(function)?;

@@ -75,8 +75,7 @@ impl Parse for Box<[Import]> {
     let mut imports = Vec::new();
 
     while parser.stream.peek(0)? == Token::Import {
-      let import = parser.consume::<Import>()?;
-      imports.push(import);
+      imports.push(parser.consume::<Import>()?);
     }
 
     Ok(imports.into_boxed_slice())

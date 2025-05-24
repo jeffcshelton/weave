@@ -402,7 +402,7 @@ impl Expression {
       },
 
       // Identifiers.
-      Token::Identifier(_) => {
+      Token::Identifier(_) | Token::Self_ => {
         Expression::Identifier(parser.consume::<Identifier>()?)
       },
 

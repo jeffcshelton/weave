@@ -118,13 +118,15 @@ impl<'s> TokenStream<'s> {
       "continue" => Token::Continue,
       "else" => Token::Else,
       "enum" => Token::Enum,
-      "extern" => Token::Extern,
+      "extension" => Token::Extension,
       "false" => Token::False,
       "for" => Token::For,
       "function" => Token::Function,
       "if" => Token::If,
       "import" => Token::Import,
       "in" => Token::In,
+      "private" => Token::Private,
+      "public" => Token::Public,
       "return" => Token::Return,
       "self" => Token::Self_,
       "struct" => Token::Struct,
@@ -465,6 +467,13 @@ impl<'s> TokenStream<'s> {
 
     // TODO: Change to reference.
     Ok(self.peeked[index].0.clone())
+  }
+
+  /// Advances by a specified number of tokens and discards them.
+  pub fn advance(&mut self, count: usize) {
+    for _ in 0..count {
+      _ = self.next();
+    }
   }
 
   /// Gets the source point range of the last scanned element.

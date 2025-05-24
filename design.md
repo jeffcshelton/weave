@@ -35,3 +35,10 @@ messier and less readable. I prioritized reability and expandability in this
 case.
 
 ## 2. Parser
+
+### Philosophy
+
+"There is only one correct syntax."
+
+### Trailing Commas
+
