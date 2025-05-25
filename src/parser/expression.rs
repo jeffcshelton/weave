@@ -1,6 +1,6 @@
 //! Expression components of the AST.
 
-use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
+use crate::{Intern, Result, Token, lexer::token::{TokenWriter, Tokenize}};
 use num::{BigInt, BigRational};
 use super::{
   BinaryOperator,
@@ -280,7 +280,7 @@ pub enum Literal {
   Integer(BigInt),
 
   /// A string.
-  String(Box<str>),
+  String(Intern),
 }
 
 impl Parse for Literal {

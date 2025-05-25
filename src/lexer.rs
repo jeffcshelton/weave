@@ -2,7 +2,7 @@
 
 pub mod token;
 
-use crate::{source::{Point, Source, SourceIterator}, Result};
+use crate::{source::{Point, Source, SourceIterator}, Intern, Result};
 use num::{BigInt, BigRational, One};
 use std::{collections::VecDeque, fmt::{self, Display, Formatter}, ops::Range, path::Path};
 use token::Token;
@@ -136,7 +136,7 @@ impl<'s> TokenStream<'s> {
       "while" => Token::While,
 
       // If the word matches no keywords, it must be an identifier.
-      _ => Token::Identifier(word.into_boxed_str()),
+      _ => Token::Identifier(Intern::from(word)),
     };
 
     Ok(token)
@@ -319,7 +319,7 @@ impl<'s> TokenStream<'s> {
 
     // Handle breaks that resulted from the string unexpectedly ending.
     if closed {
-      Ok(Token::String(content.into_boxed_str()))
+      Ok(Token::String(Intern::from(content)))
     } else {
       self.stream.locate(Error::LiteralNotClosed)
     }

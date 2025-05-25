@@ -1,13 +1,18 @@
 //! Import components of the AST.
 
-use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
+use crate::{
+  Intern,
+  Result,
+  Token,
+  lexer::token::{TokenWriter, Tokenize},
+};
 use super::{Parse, Parser};
 
 /// An import of another source file.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Import {
   /// The list of files to be imported.
-  pub files: Box<[Box<str>]>,
+  pub files: Box<[Intern]>,
 }
 
 impl Parse for Import {

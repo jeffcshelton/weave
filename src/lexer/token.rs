@@ -1,6 +1,6 @@
 //! All components and definitions related directly to tokens.
 
-use crate::Result;
+use crate::{Intern, Result};
 use num::{BigInt, BigRational};
 use std::fmt::{self, Display, Formatter};
 
@@ -157,7 +157,7 @@ pub enum Token {
   /// An arbitrary identifier name.
   ///
   /// Must begin with [A-Za-z_].
-  Identifier(Box<str>),
+  Identifier(Intern),
 
   /// `--`
   MinusMinus,
@@ -214,7 +214,7 @@ pub enum Token {
   SlashEquals,
 
   /// A string literal, beginning and ending with double quotes.
-  String(Box<str>),
+  String(Intern),
 
   /// `struct`
   Struct,

@@ -25,9 +25,10 @@ pub use types::*;
 pub use unit::*;
 
 use crate::{
+  Intern,
   Result,
   Token,
-  lexer::{TokenStream, token::{TokenWriter, Tokenize}},
+  lexer::{token::{TokenWriter, Tokenize}, TokenStream},
 };
 use num::BigInt;
 use std::{any::{Any, TypeId}, fmt::{self, Display, Formatter}};
@@ -201,7 +202,7 @@ impl<T: Parse> Parse for Box<T> {
 
 /// An identifier naming a variable or function.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Identifier(Box<str>);
+pub struct Identifier(Intern);
 
 impl Parse for Identifier {
   fn description() -> &'static str {
@@ -211,7 +212,7 @@ impl Parse for Identifier {
   fn parse(parser: &mut Parser) -> Result<Self> {
     match parser.stream.next()? {
       Token::Identifier(name) => Ok(Self(name)),
-      Token::Self_ => Ok(Self(Box::from("self"))),
+      Token::Self_ => Ok(Self(Intern::from("self"))),
       token => parser.unexpected(token),
     }
   }
