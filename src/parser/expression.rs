@@ -528,22 +528,23 @@ impl Expression {
       token => return parser.unexpected(token),
     };
 
-    // Match postfix operators.
-    match parser.stream.peek(0)? {
+    // Match all postfix operators left-to-right.
+    // There may be multiple.
+    while matches!(
+      parser.stream.peek(0)?,
       Token::BracketLeft
       | Token::Dot
       | Token::DoubleColon
       | Token::MinusMinus
       | Token::ParenthesisLeft
-      | Token::PlusPlus => {
-        let operator = parser.consume::<PostfixOperator>()?;
+      | Token::PlusPlus,
+    ) {
+      let operator = parser.consume::<PostfixOperator>()?;
 
-        expression = Expression::Postfix {
-          inner: Box::new(expression),
-          operator,
-        }
-      },
-      _ => {},
+      expression = Expression::Postfix {
+        inner: Box::new(expression),
+        operator,
+      };
     }
 
     // This is a Pratt Parser implementation that uses "binding power" to

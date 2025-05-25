@@ -62,7 +62,7 @@ impl Parse for Box<[Member]> {
   fn parse(parser: &mut Parser) -> Result<Self> where Self: Sized {
     let mut members = Vec::new();
 
-    while parser.stream.peek(3)? != Token::ParenthesisLeft {
+    while parser.stream.peek(3)? == Token::Colon {
       members.push(parser.consume::<Member>()?);
     }
 
