@@ -1,11 +1,15 @@
 //! Weave error definitions and conversions.
 
-use crate::{jit, lexer, parser, source::Point};
+use crate::{analyzer, jit, lexer, parser, source::Point};
 use std::{fmt::{self, Display, Formatter}, io, ops::Range, sync::Arc};
 
 /// Any error that can be produced by Weave.
 #[derive(Debug)]
 pub enum Error {
+  /// Error originating from the analyzer.
+  /// Wraps a `analyzer::Error`.
+  Analysis(analyzer::Error),
+
   /// Error originating from a formatting operation.
   /// Wraps a `std::fmt::Error`.
   Format(fmt::Error),
@@ -30,6 +34,7 @@ pub enum Error {
 impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
+      Error::Analysis(error) => write!(f, "analysis: {error}"),
       Error::Format(error) => write!(f, "format: {error}"),
       Error::IO(error) => write!(f, "io: {error}"),
       Error::JIT(error) => write!(f, "jit: {error}"),
@@ -44,6 +49,12 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl From<analyzer::Error> for Error {
+  fn from(error: analyzer::Error) -> Self {
+    Error::Analysis(error)
+  }
+}
 
 impl From<fmt::Error> for Error {
   fn from(error: fmt::Error) -> Self {

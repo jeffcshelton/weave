@@ -204,6 +204,12 @@ impl<T: Parse> Parse for Box<T> {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Identifier(Intern);
 
+impl Identifier {
+  pub fn intern(&self) -> Intern {
+    self.0.clone()
+  }
+}
+
 impl Parse for Identifier {
   fn description() -> &'static str {
     "identifier"

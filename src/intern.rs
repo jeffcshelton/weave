@@ -9,6 +9,18 @@ use std::{
 };
 
 /// A global pool holding all interned strings.
+///
+/// At first glance, the existence of this global variable may seem to
+/// contradict one of the central principles of this compiler, which is not to
+/// have global state. However, the real guiding theme is that global state
+/// cannot materially change the behavior of the compiler if, say, multiple
+/// independent compilations were to be done during the lifetime of a single
+/// execution instead of one.
+///
+/// Interning and pooling are purely for _performance_ reasons, and they do not
+/// materially affect the behavior of the compiler in terms of output. They do
+/// not violate the principle, as the output with or without interning is
+/// identical.
 static POOL: LazyLock<Mutex<HashSet<Intern>>> = LazyLock::new(|| {
   Mutex::new(HashSet::new())
 });
@@ -17,7 +29,7 @@ static POOL: LazyLock<Mutex<HashSet<Intern>>> = LazyLock::new(|| {
 ///
 /// All interned strings are immutable, as one instance cannot be mutated
 /// without mutating all references to it.
-#[derive(Clone, Hash)]
+#[derive(Clone, Default, Hash, Ord, PartialOrd)]
 pub struct Intern(Arc<str>);
 
 impl Borrow<str> for Intern {
