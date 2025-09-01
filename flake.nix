@@ -2,43 +2,47 @@
   description = "Weave compiler developer shell.";
 
   inputs = {
-    flake-utils = {
-      inputs.systems.follows = "systems";
-      url = "github:numtide/flake-utils";
-    };
-
+    crane.url = "github:ipetkov/crane";
+    flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    systems.url = "github:nix-systems/default";
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { flake-utils, nixpkgs, ... }:
+  outputs = { crane, flake-utils, nixpkgs, rust-overlay, ... }:
+  let
+    overlays = [ (import rust-overlay) ];
+  in
   flake-utils.lib.eachDefaultSystem (system:
     let
-      pkgs = import nixpkgs {
-        config.allowUnfree = true;
-        system = "${system}";
+      pkgs = import nixpkgs { inherit overlays system; };
+      rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+      craneLib = (crane.mkLib pkgs).overrideToolchain (_: rust);
+
+      src = craneLib.cleanCargoSource ./.;
+
+      cargoArtifacts = craneLib.buildDepsOnly {
+        inherit src;
+        strictDeps = true;
       };
 
-      overrides = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml));
-
-      libraries = [];
-      programs = with pkgs; [
-        rustup
-      ];
-
-      packages = libraries ++ programs;
+      weave = craneLib.buildPackage {
+        inherit cargoArtifacts src;
+        strictDeps = true;
+      };
     in
     {
+      apps.default = {
+        type = "app";
+        program = "${weave}/bin/weave";
+      };
+
       devShells.default = pkgs.mkShell {
-        buildInputs = packages;
+        nativeBuildInputs = [ rust ];
         name = "weave";
         version = "1.0.0";
-
-        shellHook = ''
-          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH"
-          export RUSTC_VERSION="${overrides.toolchain.channel}"
-        '';
       };
+
+      packages.default = weave;
     }
   );
 }
