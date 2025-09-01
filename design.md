@@ -42,3 +42,11 @@ case.
 
 ### Trailing Commas
 
+## 3. Analyzer
+
+### Symbolization
+
+### Visibility
+
+### Mutability
+

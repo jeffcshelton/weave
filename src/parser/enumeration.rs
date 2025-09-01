@@ -1,19 +1,19 @@
 //! Enum definitions and parsing.
 
 use crate::{lexer::token::{TokenWriter, Tokenize}, Result, Token};
-use super::{Identifier, Parse, Parser, Type, Visibility};
+use super::{Identifier, Parse, Parser, TypeExpression, Visibility};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct EnumVariantMember {
   pub identifier: Identifier,
-  pub typ: Type,
+  pub typ: TypeExpression,
 }
 
 impl Parse for EnumVariantMember {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let identifier = parser.consume::<Identifier>()?;
     parser.expect(Token::Colon)?;
-    let typ = parser.consume::<Type>()?;
+    let typ = parser.consume::<TypeExpression>()?;
 
     Ok(Self {
       identifier,
@@ -38,7 +38,7 @@ pub enum EnumVariantData {
     members: Box<[EnumVariantMember]>,
   },
   Tuple {
-    subtypes: Box<[Type]>,
+    subtypes: Box<[TypeExpression]>,
   },
 }
 
@@ -59,7 +59,7 @@ impl EnumVariantData {
   fn parse_tuple(parser: &mut Parser) -> Result<Self> {
     parser.expect(Token::ParenthesisLeft)?;
 
-    let subtypes = parser.joined::<Type>(
+    let subtypes = parser.joined::<TypeExpression>(
       Token::Comma,
       Token::ParenthesisRight,
     )?;

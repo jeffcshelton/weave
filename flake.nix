@@ -18,15 +18,19 @@
       rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       craneLib = (crane.mkLib pkgs).overrideToolchain (_: rust);
 
+      buildInputs = with pkgs; [
+        llvmPackages_18.libllvm
+      ];
+
       src = craneLib.cleanCargoSource ./.;
 
       cargoArtifacts = craneLib.buildDepsOnly {
-        inherit src;
+        inherit buildInputs src;
         strictDeps = true;
       };
 
       weave = craneLib.buildPackage {
-        inherit cargoArtifacts src;
+        inherit buildInputs cargoArtifacts src;
         strictDeps = true;
       };
     in
@@ -37,9 +41,19 @@
       };
 
       devShells.default = pkgs.mkShell {
+        inherit buildInputs;
+
+        # environment = {
+        #   LLVM_SYS_181_PREFIX = 
+        # };
+
         nativeBuildInputs = [ rust ];
         name = "weave";
         version = "1.0.0";
+
+        shellHook = ''
+          echo ${pkgs.llvmPackages_18.libllvm}
+        '';
       };
 
       packages.default = weave;

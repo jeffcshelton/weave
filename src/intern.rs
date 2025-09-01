@@ -32,6 +32,37 @@ static POOL: LazyLock<Mutex<HashSet<Intern>>> = LazyLock::new(|| {
 #[derive(Clone, Default, Hash, Ord, PartialOrd)]
 pub struct Intern(Arc<str>);
 
+impl Intern {
+  /// Generates and interns a unique, random string to be used internally.
+  ///
+  /// This is used for objects that require an unique identifier but have no
+  /// obvious human-readable name.
+  pub fn unique() -> Intern {
+    use rand::distr::{Alphanumeric, SampleString};
+
+    // Consider optimizing this for 1 allocation instead of 2 using unsafe code
+    // if it becomes a performance bottleneck. Also, with 16 random characters,
+    // checking if the string is in the pool should not be necessary.
+
+    let mut pool = POOL.lock().unwrap();
+    let mut interned;
+
+    // Generate random 16-character strings until the pool does not already
+    // contain it (this should be basically guaranteed on the first try).
+    loop {
+      let random = Alphanumeric.sample_string(&mut rand::rng(), 16);
+      interned = Intern(Arc::from(random));
+
+      if !pool.contains(&interned) {
+        break;
+      }
+    }
+
+    pool.insert(interned.clone());
+    interned
+  }
+}
+
 impl Borrow<str> for Intern {
   fn borrow(&self) -> &str {
     &self.0
@@ -85,5 +116,17 @@ impl<S: AsRef<str>> From<S> for Intern {
 impl PartialEq for Intern {
   fn eq(&self, other: &Self) -> bool {
     Arc::ptr_eq(&self.0, &other.0)
+  }
+}
+
+/// A trait for string-like types that can be interned.
+pub trait ToIntern {
+  /// Converts a string-like type to an interned string.
+  fn intern(self) -> Intern;
+}
+
+impl<T> ToIntern for T where Intern: From<T> {
+  fn intern(self) -> Intern {
+    Intern::from(self)
   }
 }

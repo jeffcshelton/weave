@@ -8,10 +8,11 @@ pub mod jit;
 pub mod lexer;
 pub mod parser;
 pub mod source;
+pub mod target;
 
 pub use error::{Error, Result};
 pub use parser::Parser;
 pub use lexer::{Lexer, token::Token};
 
 mod intern;
-pub use intern::Intern;
+pub use intern::{Intern, ToIntern};

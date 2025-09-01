@@ -35,6 +35,9 @@ fn main() {
 fn delegate() -> Result<()> {
   let args = Args::parse();
 
+  // Set the target configuration.
+  // TODO: Support cross-compilation.
+
   match args.command {
     Command::Expr { path } => {
       let mut lexer = Lexer::from_path(&path)?;

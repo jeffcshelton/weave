@@ -8,6 +8,10 @@ name = "weave"
 path = "src/main.rs"
 
 [dependencies]
+bumpalo = "3.19.0"
 clap = { version = "4.5.37", features = ["derive"] }
-cranelift = { version = "0.120.0", features = ["jit", "module", "native"] }
+hashbrown = "0.15.4"
+inkwell = { version = "0.6.0", features = ["llvm18-1"] }
 num = "0.4.3"
+num-traits = "0.2.19"
+rand = "0.9.1"

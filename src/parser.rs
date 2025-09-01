@@ -31,7 +31,7 @@ use crate::{
   lexer::{token::{TokenWriter, Tokenize}, TokenStream},
 };
 use num::BigInt;
-use std::{any::{Any, TypeId}, fmt::{self, Display, Formatter}};
+use std::{any::{Any, TypeId}, fmt::{self, Display, Formatter}, ops::Deref};
 
 /// A parser that produces an abstract syntax tree (AST).
 pub struct Parser<'s> {
@@ -233,6 +233,20 @@ impl Tokenize for Identifier {
 impl Display for Identifier {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     write!(f, "{}", self.0)
+  }
+}
+
+impl AsRef<str> for Identifier {
+  fn as_ref(&self) -> &str {
+    &self.0
+  }
+}
+
+impl Deref for Identifier {
+  type Target = Intern;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 

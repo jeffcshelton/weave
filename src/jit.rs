@@ -1,20 +1,13 @@
 //! Just-in-time compilation.
 
-use cranelift::{
-  codegen::{self, CodegenError},
-  jit::{JITBuilder, JITModule},
-  module::{default_libcall_names, Module},
-  prelude::{
-    settings::{Flags as ISAFlags, SetError}, AbiParam, Configurable
-  },
-};
-
 use crate::{
   parser::{Class, Function, Global, Import, Struct, Unit},
   Lexer,
   Parser,
   Result,
 };
+
+use inkwell::context::Context as LlvmContext;
 
 use std::{
   collections::HashSet,
@@ -24,7 +17,7 @@ use std::{
 
 /// The just-in-time compilation runtime.
 pub struct JIT {
-  context: codegen::Context,
+  context: LlvmContext,
 
   /// Set of all absolute paths of all imports in the source tree.
   /// This is recorded and checked to avoid double imports.
@@ -45,7 +38,8 @@ impl JIT {
 
     let int = self.module.target_config().pointer_type();
 
-    for _param in parameters {
+    for param in parameters {
+      AbiParam
       self.context.func.signature.params.push(AbiParam::new(int));
     }
 
@@ -108,6 +102,9 @@ impl JIT {
   /// Adds a compilation unit to the JIT runtime.
   pub fn add_unit(&mut self, unit: Unit, path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
+
+    self.context.create_module(path);
+
     let Unit {
       classes,
       enums,

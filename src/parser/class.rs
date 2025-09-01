@@ -8,7 +8,7 @@ use super::{
   Mutability,
   Parse,
   Parser,
-  Type,
+  TypeExpression,
   Visibility,
 };
 
@@ -25,7 +25,7 @@ pub struct Member {
   pub identifier: Identifier,
 
   /// The type of the member variable.
-  pub typ: Type,
+  pub typ: TypeExpression,
 }
 
 impl Parse for Member {
@@ -34,7 +34,7 @@ impl Parse for Member {
     let mutability = parser.consume::<Mutability>()?;
     let identifier = parser.consume::<Identifier>()?;
     parser.expect(Token::Colon)?;
-    let typ = parser.consume::<Type>()?;
+    let typ = parser.consume::<TypeExpression>()?;
     parser.expect(Token::Semicolon)?;
 
     Ok(Self {
@@ -156,7 +156,7 @@ pub struct Method {
 
   /// The optional return type of the method.
   /// If the return type is not supplied, it is implied to be void.
-  pub return_type: Option<Type>,
+  pub return_type: Option<TypeExpression>,
 
   /// The block of statements executed when the method is called.
   pub block: Block,
@@ -221,7 +221,7 @@ impl Parse for Method {
     let return_type = match parser.stream.peek(0)? {
       Token::Arrow => {
         parser.stream.advance(1);
-        Some(parser.consume::<Type>()?)
+        Some(parser.consume::<TypeExpression>()?)
       },
       _ => None,
     };
@@ -304,7 +304,7 @@ pub struct Class {
   pub identifier: Identifier,
 
   /// The parent class and any interfaces which the class must implement.
-  pub parents: Box<[Type]>,
+  pub parents: Box<[TypeExpression]>,
 
   /// The set of all member variables of the class.
   pub members: Box<[Member]>,
@@ -325,12 +325,12 @@ impl Parse for Class {
       Token::Colon => {
         parser.stream.advance(1);
 
-        let first = parser.consume::<Type>()?;
+        let first = parser.consume::<TypeExpression>()?;
         let mut parents = vec![first];
 
         while parser.stream.peek(0)? == Token::Comma {
           parser.stream.advance(1);
-          parents.push(parser.consume::<Type>()?);
+          parents.push(parser.consume::<TypeExpression>()?);
         }
 
         parents.into_boxed_slice()
@@ -435,7 +435,7 @@ impl Tokenize for [Struct] {
 pub struct Extension {
   pub visibility: Visibility,
   pub class: Identifier,
-  pub interfaces: Box<[Type]>,
+  pub interfaces: Box<[TypeExpression]>,
   pub methods: Box<[Method]>,
 }
 
@@ -453,11 +453,11 @@ impl Parse for Extension {
         let interfaces = parser.joined(Token::Comma, Token::BraceLeft)?;
 
         // If the colon is present, at least one interface must be specified.
-        // This call to parse a `Type` will intentionally fail.
+        // This call to parse a `TypeExpression` will intentionally fail.
         //
         // TODO: Potentially replace this with its own error.
         if interfaces.is_empty() {
-          parser.consume::<Type>()?;
+          parser.consume::<TypeExpression>()?;
         }
 
         interfaces

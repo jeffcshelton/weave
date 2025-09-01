@@ -1,7 +1,7 @@
 //! Statement components of the AST.
 
 use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
-use super::{AssignmentOperator, Expression, Identifier, Parse, Parser, Type};
+use super::{AssignmentOperator, Expression, Identifier, Parse, Parser, TypeExpression};
 
 /// An assignment operation.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -49,7 +49,7 @@ pub struct Declaration {
   pub variable: Identifier,
 
   /// The type of the variable being declared.
-  pub typ: Option<Type>,
+  pub typ: Option<TypeExpression>,
 
   /// The expression to be initially assigned to the variable.
   pub expression: Option<Expression>,
@@ -68,7 +68,7 @@ impl Parse for Declaration {
     let typ = match parser.stream.peek(0)? {
       Token::Colon => {
         _ = parser.stream.next();
-        Some(parser.consume::<Type>()?)
+        Some(parser.consume::<TypeExpression>()?)
       },
       _ => None,
     };

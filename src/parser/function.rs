@@ -1,7 +1,7 @@
 //! Function components of the AST.
 
 use crate::{Result, Token, lexer::token::{TokenWriter, Tokenize}};
-use super::{Block, Expression, Identifier, Parse, Parser, Type, Visibility};
+use super::{Block, Expression, Identifier, Parse, Parser, TypeExpression, Visibility};
 
 /// A concrete argument passed to a function or closure.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -87,7 +87,7 @@ pub struct FunctionParameter {
   pub identifier: Identifier,
 
   /// The type identifier associated with the variable.
-  pub typ: Type,
+  pub typ: TypeExpression,
 }
 
 impl Parse for FunctionParameter {
@@ -104,7 +104,7 @@ impl Parse for FunctionParameter {
     };
 
     parser.expect(Token::Colon)?;
-    let typ = parser.consume::<Type>()?;
+    let typ = parser.consume::<TypeExpression>()?;
 
     Ok(FunctionParameter {
       label,
@@ -169,7 +169,7 @@ pub struct Function {
   pub parameters: Box<[FunctionParameter]>,
 
   /// The optional return type identifier.
-  pub return_type: Option<Type>,
+  pub return_type: Option<TypeExpression>,
 
   /// The block executed when the function is called.
   pub block: Block,
@@ -187,7 +187,7 @@ impl Parse for Function {
     let return_type = match parser.stream.peek(0)? {
       Token::Arrow => {
         _ = parser.stream.next();
-        Some(parser.consume::<Type>()?)
+        Some(parser.consume::<TypeExpression>()?)
       },
       _ => None,
     };

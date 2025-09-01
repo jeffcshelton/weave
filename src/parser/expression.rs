@@ -11,7 +11,7 @@ use super::{
   Parser,
   PostfixOperator,
   PrefixOperator,
-  Type,
+  TypeExpression,
 };
 
 /// An array containing zero or more elements.
@@ -127,7 +127,7 @@ pub struct ClosureParameter {
 
   /// The optional type associated with the variable.
   /// If no type is specified, it will be inferred.
-  pub typ: Option<Type>,
+  pub typ: Option<TypeExpression>,
 }
 
 impl Parse for ClosureParameter {
@@ -136,7 +136,7 @@ impl Parse for ClosureParameter {
 
     let typ = if parser.stream.peek(0)? == Token::Colon {
       _ = parser.stream.next();
-      Some(parser.consume::<Type>()?)
+      Some(parser.consume::<TypeExpression>()?)
     } else {
       None
     };
