@@ -4,7 +4,7 @@
   inputs = {
     crane.url = "github:ipetkov/crane";
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
@@ -18,19 +18,20 @@
       rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       craneLib = (crane.mkLib pkgs).overrideToolchain (_: rust);
 
-      buildInputs = with pkgs; [
-        llvmPackages_18.libllvm
+      nativeBuildInputs = with pkgs; [
+        llvm_18
+        rust
       ];
 
       src = craneLib.cleanCargoSource ./.;
 
       cargoArtifacts = craneLib.buildDepsOnly {
-        inherit buildInputs src;
+        inherit nativeBuildInputs src;
         strictDeps = true;
       };
 
       weave = craneLib.buildPackage {
-        inherit buildInputs cargoArtifacts src;
+        inherit nativeBuildInputs cargoArtifacts src;
         strictDeps = true;
       };
     in
@@ -41,19 +42,9 @@
       };
 
       devShells.default = pkgs.mkShell {
-        inherit buildInputs;
-
-        # environment = {
-        #   LLVM_SYS_181_PREFIX = 
-        # };
-
-        nativeBuildInputs = [ rust ];
+        inherit nativeBuildInputs;
         name = "weave";
         version = "1.0.0";
-
-        shellHook = ''
-          echo ${pkgs.llvmPackages_18.libllvm}
-        '';
       };
 
       packages.default = weave;

@@ -7,8 +7,6 @@ use crate::{
   Result,
 };
 
-use inkwell::context::Context as LlvmContext;
-
 use std::{
   collections::HashSet,
   fmt::{self, Display, Formatter},
@@ -17,13 +15,9 @@ use std::{
 
 /// The just-in-time compilation runtime.
 pub struct JIT {
-  context: LlvmContext,
-
   /// Set of all absolute paths of all imports in the source tree.
   /// This is recorded and checked to avoid double imports.
   imports: HashSet<Box<Path>>,
-
-  module: JITModule,
 }
 
 impl JIT {
@@ -34,14 +28,7 @@ impl JIT {
 
   /// Adds a function to the JIT source tree.
   pub fn add_function(&mut self, function: Function) -> Result<()> {
-    let Function { parameters, .. } = function;
-
-    let int = self.module.target_config().pointer_type();
-
-    for param in parameters {
-      AbiParam
-      self.context.func.signature.params.push(AbiParam::new(int));
-    }
+    // let Function { parameters, .. } = function;
 
     Ok(())
   }
@@ -102,8 +89,6 @@ impl JIT {
   /// Adds a compilation unit to the JIT runtime.
   pub fn add_unit(&mut self, unit: Unit, path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
-
-    self.context.create_module(path);
 
     let Unit {
       classes,
@@ -168,28 +153,7 @@ impl JIT {
 
   /// Constructs a new `JIT` runtime with the default settings.
   pub fn new() -> Result<Self> {
-    // This inner function is not just for compartmentalization.
-    // It simplifies error handling code.
-    fn build_module() -> std::result::Result<JITModule, Error> {
-      let mut flags = cranelift::prelude::settings::builder();
-      flags.set("use_colocated_libcalls", "false")?;
-      flags.set("is_pic", "false")?;
-
-      let isa = cranelift::native::builder()
-        .map_err(|_| Error::PlatformUnsupported)?
-        .finish(ISAFlags::new(flags))?;
-
-      let builder = JITBuilder::with_isa(isa, default_libcall_names());
-      Ok(JITModule::new(builder))
-    }
-
-    let module = build_module()?;
-
-    Ok(Self {
-      context: module.make_context(),
-      imports: HashSet::new(),
-      module,
-    })
+    Ok(Self { imports: HashSet::new() })
   }
 }
 
@@ -405,12 +369,6 @@ impl Display for Language {
 /// An error originating from or relating to the JIT runtime.
 #[derive(Debug)]
 pub enum Error {
-  /// A Cranelift codegen operation failed.
-  CraneliftCodegen(CodegenError),
-
-  /// A Cranelift setting was set improperly (internal).
-  CraneliftSetting(SetError),
-
   /// The file type is incompatible with the pre-determined language.
   FileTypeIncompatible(FileType, Language),
 
@@ -430,12 +388,6 @@ pub enum Error {
 impl Display for Error {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     match self {
-      Self::CraneliftCodegen(error) => {
-        write!(f, "Cranelift codegen: {error}")
-      },
-      Self::CraneliftSetting(error) => {
-        write!(f, "[internal] invalid Cranelift setting: {error}")
-      },
       Self::FileTypeIncompatible(file_type, language) => {
         write!(f, "file type '{file_type}' is incompatible with '{language}'")
       },
@@ -456,15 +408,3 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-impl From<CodegenError> for Error {
-  fn from(error: CodegenError) -> Self {
-    Self::CraneliftCodegen(error)
-  }
-}
-
-impl From<SetError> for Error {
-  fn from(error: SetError) -> Self {
-    Self::CraneliftSetting(error)
-  }
-}
