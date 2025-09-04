@@ -1,4 +1,4 @@
-import "thing.rs";
+import "std/types.w";
 
 public class Thing {
   private var thing1: lambda;

@@ -1,7 +1,12 @@
 //! Just-in-time compilation.
 
+use inkwell::{
+  context::Context as LLVMContext,
+  module::Module as LLVMModule,
+};
+
 use crate::{
-  parser::{Class, Function, Global, Import, Struct, Unit},
+  parser::{self, Class, Function, Import, Struct},
   Lexer,
   Parser,
   Result,
@@ -15,6 +20,8 @@ use std::{
 
 /// The just-in-time compilation runtime.
 pub struct JIT {
+  context: LLVMContext,
+
   /// Set of all absolute paths of all imports in the source tree.
   /// This is recorded and checked to avoid double imports.
   imports: HashSet<Box<Path>>,
@@ -33,12 +40,7 @@ impl JIT {
     Ok(())
   }
 
-  /// Adds a declaration of a global variable to the JIT source tree.
-  pub fn add_global(&mut self, _global: Global) -> Result<()> {
-    Ok(())
-  }
-
-  /// Adds a single import line, and all of its descedent imports, into the JIT
+  /// Adds a single import line, and all of its descedent imports, into the
   /// source tree.
   pub fn add_import(
     &mut self,
@@ -71,7 +73,7 @@ impl JIT {
 
       // Parse the whole source file into a compilation unit.
       let mut parser = Parser::new(lexer.stream());
-      let unit = parser.consume::<Unit>()?;
+      let unit = parser.consume::<parser::Unit>()?;
 
       // Add this import's unit.
       self.imports.insert(source.clone());
@@ -87,18 +89,9 @@ impl JIT {
   }
 
   /// Adds a compilation unit to the JIT runtime.
-  pub fn add_unit(&mut self, unit: Unit, path: impl AsRef<Path>) -> Result<()> {
-    let path = path.as_ref();
-
-    let Unit {
-      classes,
-      enums,
-      extensions,
-      functions,
-      globals,
-      imports,
-      structs,
-    } = unit;
+  pub fn add_unit(&mut self, unit: parser::Unit, path: impl AsRef<Path>) -> Result<()> {
+    let path: &Path = path.as_ref();
+    let parser::Unit { imports, declarations } = unit;
 
     // SAFETY: This unwrap is safe because if the path here is being passed in
     // with the unit, then it must have already been read to produce the `Unit`.
@@ -115,22 +108,6 @@ impl JIT {
       self.add_import(import, base)?;
     }
 
-    for struct_ in structs {
-      self.add_struct(struct_)?;
-    }
-
-    for class in classes {
-      self.add_class(class)?;
-    }
-
-    for global in globals {
-      self.add_global(global)?;
-    }
-
-    for function in functions {
-      self.add_function(function)?;
-    }
-
     Ok(())
   }
 
@@ -142,7 +119,7 @@ impl JIT {
     // Lex and parse the base compilation unit.
     let mut lexer = Lexer::from_path(path)?;
     let mut parser = Parser::new(lexer.stream());
-    let unit = parser.consume::<Unit>()?;
+    let unit = parser.consume::<parser::Unit>()?;
 
     // Add the base compilation unit to the JIT runtime.
     let mut jit = JIT::new()?;
@@ -153,7 +130,10 @@ impl JIT {
 
   /// Constructs a new `JIT` runtime with the default settings.
   pub fn new() -> Result<Self> {
-    Ok(Self { imports: HashSet::new() })
+    Ok(Self {
+      context: LLVMContext::create(),
+      imports: HashSet::new(),
+    })
   }
 }
 

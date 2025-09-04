@@ -19,6 +19,8 @@
       craneLib = (crane.mkLib pkgs).overrideToolchain (_: rust);
 
       nativeBuildInputs = with pkgs; [
+        libffi
+        libxml2
         llvm_18
         rust
       ];
@@ -43,6 +45,9 @@
 
       devShells.default = pkgs.mkShell {
         inherit nativeBuildInputs;
+
+        LLVM_SYS_181_PREFIX = "${pkgs.llvm_18.dev}";
+
         name = "weave";
         version = "1.0.0";
       };

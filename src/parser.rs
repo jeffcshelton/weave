@@ -1,26 +1,28 @@
 //! Components related to parsing a Weave abstract syntax tree (AST).
 
 pub mod class;
+pub mod decl;
+pub mod directive;
 pub mod enumeration;
-pub mod expression;
-pub mod function;
-pub mod global;
+pub mod expr;
+pub mod func;
 pub mod import;
 pub mod modifier;
-pub mod operator;
-pub mod statement;
+pub mod op;
+pub mod stmt;
 pub mod types;
 pub mod unit;
 
 pub use class::*;
+pub use decl::*;
+pub use directive::*;
 pub use enumeration::*;
-pub use expression::*;
-pub use function::*;
-pub use global::*;
+pub use expr::*;
+pub use func::*;
 pub use import::*;
 pub use modifier::*;
-pub use operator::*;
-pub use statement::*;
+pub use op::*;
+pub use stmt::*;
 pub use types::*;
 pub use unit::*;
 

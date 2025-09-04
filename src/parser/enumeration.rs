@@ -138,14 +138,12 @@ impl Tokenize for EnumVariant {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Enum {
-  pub visibility: Visibility,
   pub identifier: Identifier,
   pub variants: Box<[EnumVariant]>,
 }
 
 impl Parse for Enum {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Enum)?;
 
     let identifier = parser.consume::<Identifier>()?;
@@ -160,7 +158,6 @@ impl Parse for Enum {
     parser.expect(Token::BraceRight)?;
 
     Ok(Self {
-      visibility,
       identifier,
       variants,
     })
@@ -169,7 +166,6 @@ impl Parse for Enum {
 
 impl Tokenize for Enum {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.visibility)?;
     writer.write_one(Token::Enum)?;
     writer.write(&self.identifier)?;
     writer.write_one(Token::BraceLeft)?;

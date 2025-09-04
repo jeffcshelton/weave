@@ -159,9 +159,6 @@ impl Tokenize for [FunctionParameter] {
 /// A function declaration.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Function {
-  /// The visibility of the function to outside callers.
-  pub visibility: Visibility,
-
   /// The identifier by which the function may be called.
   pub identifier: Identifier,
 
@@ -177,7 +174,6 @@ pub struct Function {
 
 impl Parse for Function {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Function)?;
     let identifier = parser.consume::<Identifier>()?;
     parser.expect(Token::ParenthesisLeft)?;
@@ -195,7 +191,6 @@ impl Parse for Function {
     let block = parser.consume::<Block>()?;
 
     Ok(Function {
-      visibility,
       identifier,
       parameters,
       return_type,
@@ -206,7 +201,6 @@ impl Parse for Function {
 
 impl Tokenize for Function {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.visibility)?;
     writer.write_one(Token::Function)?;
     writer.write(&self.identifier)?;
     writer.write_one(Token::ParenthesisLeft)?;

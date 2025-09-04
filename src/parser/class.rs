@@ -297,9 +297,6 @@ impl Tokenize for [Method] {
 /// A definition of a class.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Class {
-  /// The visibility of the class to outside instantiation.
-  pub visibility: Visibility,
-
   /// The identifier, or type name, of the class.
   pub identifier: Identifier,
 
@@ -315,7 +312,6 @@ pub struct Class {
 
 impl Parse for Class {
   fn parse(parser: &mut Parser) -> Result<Self> where Self: Sized {
-    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Class)?;
 
     let identifier = parser.consume::<Identifier>()?;
@@ -345,7 +341,6 @@ impl Parse for Class {
     parser.expect(Token::BraceRight)?;
 
     Ok(Self {
-      visibility,
       identifier,
       parents,
       members,
@@ -356,7 +351,6 @@ impl Parse for Class {
 
 impl Tokenize for Class {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.visibility)?;
     writer.write_one(Token::Class)?;
     writer.write(&self.identifier)?;
     writer.write_one(Token::BraceLeft)?;
@@ -381,9 +375,6 @@ impl Tokenize for [Class] {
 /// A definition of a struct.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Struct {
-  /// The visibility of the struct to outside instantiation.
-  pub visibility: Visibility,
-
   /// The identifier, or type name, of the struct.
   pub identifier: Identifier,
 
@@ -393,7 +384,6 @@ pub struct Struct {
 
 impl Parse for Struct {
   fn parse(parser: &mut Parser) -> Result<Self> where Self: Sized {
-    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Struct)?;
     let identifier = parser.consume::<Identifier>()?;
     parser.expect(Token::BraceLeft)?;
@@ -401,7 +391,6 @@ impl Parse for Struct {
     parser.expect(Token::BraceRight)?;
 
     Ok(Self {
-      visibility,
       identifier,
       members,
     })
@@ -410,7 +399,6 @@ impl Parse for Struct {
 
 impl Tokenize for Struct {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.visibility)?;
     writer.write_one(Token::Struct)?;
     writer.write(&self.identifier)?;
     writer.write_one(Token::BraceLeft)?;
@@ -433,7 +421,6 @@ impl Tokenize for [Struct] {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Extension {
-  pub visibility: Visibility,
   pub class: Identifier,
   pub interfaces: Box<[TypeExpression]>,
   pub methods: Box<[Method]>,
@@ -441,7 +428,6 @@ pub struct Extension {
 
 impl Parse for Extension {
   fn parse(parser: &mut Parser) -> Result<Self> {
-    let visibility = parser.consume::<Visibility>()?;
     parser.expect(Token::Extension)?;
 
     let class = parser.consume::<Identifier>()?;
@@ -472,7 +458,6 @@ impl Parse for Extension {
     parser.expect(Token::BraceRight)?;
 
     Ok(Self {
-      visibility,
       class,
       interfaces,
       methods,
@@ -482,7 +467,6 @@ impl Parse for Extension {
 
 impl Tokenize for Extension {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
-    writer.write(&self.visibility)?;
     writer.write_one(Token::Extension)?;
     writer.write(&self.class)?;
     writer.write(&*self.methods)?;

@@ -1,9 +1,17 @@
-// pub mod scope;
-// pub mod symbol;
+pub mod block;
+pub mod expr;
+pub mod func;
+pub mod scope;
+pub mod symbol;
 
-use num::BigInt;
+pub use block::Block;
+pub use expr::Expression;
+pub use func::Function;
+pub use scope::Scope;
+pub use symbol::Symbol;
 
 use crate::Intern;
+use num::BigInt;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

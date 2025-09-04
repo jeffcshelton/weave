@@ -53,13 +53,9 @@ inner nonterminals to see what exact sequences of tokens would match the rule.
 ## 1. Translation Units
 
 ```
-unit ::= (import)* unit_body <eof>
-
-unit_body::=
-  | class unit_tail
-  | function unit_tail
-  | global unit_tail
-  | struct unit_tail
+unit ::= (import)* (annotated_unit_decl)* <eof>
+annotated_unit_decl ::= (directive)? type_item
+unit_decl ::= class | function | global | struct
 ```
 
 ## 2. Imports
@@ -77,6 +73,8 @@ import_paths ::=
 type ::=
   | <ident> type_tail
   | ( tuple_type ) type_tail
+  | ptr_type
+  | ref_type
 
 tuple_type ::=
   | type ,
@@ -87,6 +85,12 @@ type_tail ::=
   | :: type type_tail
   | ([ (<integer>)? ])?
   | <empty>
+
+ptr_type ::=
+  | * (const)? type
+
+ref_type ::=
+  | & (const)? type
 ```
 
 ## Statements
@@ -415,4 +419,4 @@ global ::= visibility decl ;
 
 # Future Features
 
-- Value-producing if statements and loops.
+- If statements and loops as expressions.

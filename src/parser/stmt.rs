@@ -41,12 +41,12 @@ impl Tokenize for Assignment {
 
 /// A declaration of a new variable, optionally with an initial assignment.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Declaration {
+pub struct Variable {
   /// Whether the variable being declared is mutable.
   pub mutable: bool,
 
   /// The identifier of the variable being declared.
-  pub variable: Identifier,
+  pub ident: Identifier,
 
   /// The type of the variable being declared.
   pub typ: Option<TypeExpression>,
@@ -55,7 +55,7 @@ pub struct Declaration {
   pub expression: Option<Expression>,
 }
 
-impl Parse for Declaration {
+impl Parse for Variable {
   fn parse(parser: &mut Parser) -> Result<Self> {
     let mutable = match parser.stream.next()? {
       Token::Const => false,
@@ -63,7 +63,7 @@ impl Parse for Declaration {
       token => return parser.unexpected(token),
     };
 
-    let variable = parser.consume::<Identifier>()?;
+    let ident = parser.consume::<Identifier>()?;
 
     let typ = match parser.stream.peek(0)? {
       Token::Colon => {
@@ -81,16 +81,16 @@ impl Parse for Declaration {
       _ => None,
     };
 
-    Ok(Declaration {
+    Ok(Self {
       mutable,
-      variable,
+      ident,
       typ,
       expression,
     })
   }
 }
 
-impl Tokenize for Declaration {
+impl Tokenize for Variable {
   fn tokenize(&self, writer: &mut impl TokenWriter) -> Result<()> {
     if self.mutable {
       writer.write_one(Token::Var)?;
@@ -98,7 +98,7 @@ impl Tokenize for Declaration {
       writer.write_one(Token::Const)?;
     }
 
-    writer.write(&self.variable)?;
+    writer.write(&self.ident)?;
 
     if let Some(typ) = &self.typ {
       writer.write_one(Token::Colon)?;
@@ -249,7 +249,7 @@ pub enum Statement {
   Assignment(Assignment),
 
   /// A declaration statement creating a variable.
-  Declaration(Declaration),
+  Declaration(Variable),
 
   /// An empty statement (no-op).
   Empty,
@@ -280,7 +280,7 @@ impl Parse for Statement {
       // - "var bar = 2;"
       // - "var bar;"
       Token::Const | Token::Var => {
-        let declaration = parser.consume::<Declaration>()?;
+        let declaration = parser.consume::<Variable>()?;
         parser.expect(Token::Semicolon)?;
 
         Statement::Declaration(declaration)

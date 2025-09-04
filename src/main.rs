@@ -3,18 +3,15 @@
 use clap::{Parser as CommandParser, Subcommand};
 use std::process;
 use weave::{
-  jit::JIT, lexer::token::Tokenize, parser::{Expression, Unit}, Lexer, Parser, Result
+  analyzer::Scope, jit::JIT, lexer::token::Tokenize, parser::{Expression, Unit}, Lexer, Parser, Result
 };
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {
+  Analyze { path: String },
   Expr { path: String },
-  Lex {
-    paths: Vec<String>,
-  },
-  Parse {
-    paths: Vec<String>,
-  },
+  Lex { paths: Vec<String> },
+  Parse { paths: Vec<String> },
   Run { path: String },
 }
 
@@ -39,6 +36,14 @@ fn delegate() -> Result<()> {
   // TODO: Support cross-compilation.
 
   match args.command {
+    Command::Analyze { path } => {
+      let mut lexer = Lexer::from_path(&path)?;
+      let mut parser = Parser::new(lexer.stream());
+      let unit = parser.consume::<Unit>()?;
+      let scope = Scope::from_unit(&unit);
+
+      println!("{scope:#?}");
+    },
     Command::Expr { path } => {
       let mut lexer = Lexer::from_path(&path)?;
       let mut parser = Parser::new(lexer.stream());

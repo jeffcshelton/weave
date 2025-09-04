@@ -1,6 +1,5 @@
 use crate::{parser::{self, Identifier}, Intern, Result, ToIntern};
 use hashbrown::HashMap;
-use num::BigInt;
 use num_traits::ToPrimitive;
 use std::{hash::{Hash, Hasher}, iter::Iterator, rc::Rc};
 use super::{Error, scope::Scope};
@@ -288,30 +287,30 @@ macro_rules! base_type {
   };
 }
 
-pub fn base_types() -> [Symbol; 12] {
-  [
-    base_type!("bool", size: 1, align: 1),
-    base_type!("char", size: 1, align: 1),
-    base_type!("f32", size: 4, align: 4),
-    base_type!("f64", size: 8, align: 8),
-    base_type!("i8", size: 1, align: 1),
-    base_type!("i16", size: 2, align: 2),
-    base_type!("i32", size: 4, align: 4),
-    base_type!("i64", size: 8, align: 8),
-    // base_type!("string", size: 16, align: 8),
-    base_type!("u8", size: 1, align: 1),
-    base_type!("u16", size: 2, align: 2),
-    base_type!("u32", size: 4, align: 4),
-    base_type!("u64", size: 8, align: 8),
-  ]
-}
-
-pub fn base_symbols() -> HashMap<Intern, Rc<Symbol>> {
-  let mut symbols = HashMap::new();
-
-  for typ in base_types() {
-    symbols.insert(typ.ident(), Rc::new(typ));
-  }
-
-  symbols
-}
+// pub fn base_types() -> [Symbol; 13] {
+//   [
+//     base_type!("bool", size: 1, align: 1),
+//     base_type!("char", size: 1, align: 1),
+//     base_type!("string", size: 16, align: 8),
+//     base_type!("f32", size: 4, align: 4),
+//     base_type!("f64", size: 8, align: 8),
+//     base_type!("i8", size: 1, align: 1),
+//     base_type!("i16", size: 2, align: 2),
+//     base_type!("i32", size: 4, align: 4),
+//     base_type!("i64", size: 8, align: 8),
+//     base_type!("u8", size: 1, align: 1),
+//     base_type!("u16", size: 2, align: 2),
+//     base_type!("u32", size: 4, align: 4),
+//     base_type!("u64", size: 8, align: 8),
+//   ]
+// }
+//
+// pub fn base_symbols() -> HashMap<Intern, Rc<Symbol>> {
+//   let mut symbols = HashMap::new();
+//
+//   for typ in base_types() {
+//     symbols.insert(typ.ident(), Rc::new(typ));
+//   }
+//
+//   symbols
+// }
